@@ -36,6 +36,8 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      MEMENTO_PREVIEW_KEYSTORE: ${{ github.workspace }}/runtime-work/signing/preview.keystore
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -54,22 +56,50 @@ jobs:
         id: signing
         if: github.ref == 'refs/heads/main'
         with:
-          path: ~/.android/debug.keystore
-          key: memento-preview-signing-v1
-      - name: Require the original preview signing key
-        if: github.ref == 'refs/heads/main' && steps.signing.outputs.cache-hit != 'true'
-        run: |
-          echo 'Original preview signing key was not restored; refusing to publish an incompatible update.' >&2
-          exit 1
-      - run: gradle --no-daemon :app:assembleDebug :app:lintDebug
-      - name: Verify the APK can update 0.1.0
+          path: runtime-work/signing/preview.keystore
+          key: memento-recovery-signing-v1
+      - name: Check whether recovery signing has an existing anchor
+        id: anchor
         if: github.ref == 'refs/heads/main'
         run: |
-          curl -fL --retry 3 https://github.com/Russianranger/uo-android-launcher/releases/download/v0.1.0/UO-Memento-0.1.0.apk -o runtime-work/previous.apk
-          echo 'bb68753983d51ddff3aeca5070936b052046c50062ef1c545bc2cf02e806e5c6  runtime-work/previous.apk' | sha256sum --check
+          status=$(curl -sS --retry 3 -o runtime-work/recovery-release.json -w '%{http_code}' https://api.github.com/repos/Russianranger/uo-android-launcher/releases/tags/v0.1.1)
+          case "$status" in
+            200) echo 'exists=true' >> "$GITHUB_OUTPUT" ;;
+            404) echo 'exists=false' >> "$GITHUB_OUTPUT" ;;
+            *) echo "Cannot verify existing release: HTTP $status" >&2; exit 1 ;;
+          esac
+      - name: Prepare the explicit recovery preview key
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MEMENTO_SIGNING_KEYSTORE_BASE64: ${{ secrets.MEMENTO_SIGNING_KEYSTORE_BASE64 }}
+          RECOVERY_RELEASE_EXISTS: ${{ steps.anchor.outputs.exists }}
+        run: |
+          mkdir -p "$(dirname "$MEMENTO_PREVIEW_KEYSTORE")"
+          if [ -n "$MEMENTO_SIGNING_KEYSTORE_BASE64" ]; then
+            printf '%s' "$MEMENTO_SIGNING_KEYSTORE_BASE64" | base64 --decode > "$MEMENTO_PREVIEW_KEYSTORE"
+          elif [ ! -f "$MEMENTO_PREVIEW_KEYSTORE" ]; then
+            if [ "$RECOVERY_RELEASE_EXISTS" = true ]; then
+              echo 'Recovery signing key is unavailable; restore it before publishing another update.' >&2
+              exit 1
+            fi
+            keytool -genkeypair -keystore "$MEMENTO_PREVIEW_KEYSTORE" -storetype JKS -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=UO Memento Recovery Preview'
+          fi
+          chmod 600 "$MEMENTO_PREVIEW_KEYSTORE"
+      - run: gradle --no-daemon :app:assembleDebug :app:lintDebug
+      - name: Verify recovery identity and signature
+        run: |
           signer="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          "$signer" verify --print-certs runtime-work/previous.apk > runtime-work/previous-cert.txt
           "$signer" verify --print-certs app/build/outputs/apk/debug/app-debug.apk > runtime-work/update-cert.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk > runtime-work/badging.txt
+          grep -q "package: name='io.github.russianranger.uomemento.recovery'" runtime-work/badging.txt
+          grep -q "versionCode='2'" runtime-work/badging.txt
+      - name: Keep the recovery certificate stable after its first release
+        if: github.ref == 'refs/heads/main' && steps.anchor.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.1.1 --pattern UO-Memento-0.1.1-Recovery.apk --dir runtime-work/anchor
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs runtime-work/anchor/UO-Memento-0.1.1-Recovery.apk > runtime-work/previous-cert.txt
           previous=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' runtime-work/previous-cert.txt)
           update=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' runtime-work/update-cert.txt)
           test -n "$previous" && test "$previous" = "$update"
@@ -101,13 +131,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.1.1.apk
+          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.1.1-Recovery.apk
           mv dist/runtime-work/downloads/runtime-bridges.zip dist/runtime-bridges.zip
           curl -fL --retry 3 https://github.com/Russianranger/uo-android-launcher/releases/download/v0.1.0/runtime-corresponding-sources.tar.gz -o dist/runtime-corresponding-sources.tar.gz
           echo '492043660b1370e1910c8b8ca2b93be1f637f4929034f575591f14e67e015243  dist/runtime-corresponding-sources.tar.gz' | sha256sum --check
+          cp scripts/recover-preview.py dist/recover-preview.py
           git archive --format=zip --output=dist/UO-Memento-0.1.1-source.zip HEAD
-          (cd dist && sha256sum UO-Memento-0.1.1.apk UO-Memento-0.1.1-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz) > dist/SHA256SUMS.txt
+          (cd dist && sha256sum UO-Memento-0.1.1-Recovery.apk UO-Memento-0.1.1-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
           if ! gh release view v0.1.1 >/dev/null 2>&1; then
-            gh release create v0.1.1 --target "$GITHUB_SHA" --prerelease --title 'UO Memento 0.1.1 — diagnostics and startup fixes' --notes-file docs/RELEASE-NOTES.md
+            gh release create v0.1.1 --target "$GITHUB_SHA" --prerelease --title 'UO Memento 0.1.1 — recovery preview' --notes-file docs/RELEASE-NOTES.md
           fi
-          gh release upload v0.1.1 dist/UO-Memento-0.1.1.apk dist/UO-Memento-0.1.1-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt --clobber
+          gh release upload v0.1.1 dist/UO-Memento-0.1.1-Recovery.apk dist/UO-Memento-0.1.1-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py --clobber
