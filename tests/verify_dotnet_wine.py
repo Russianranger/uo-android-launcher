@@ -3,6 +3,7 @@
 Runs on an x86-64 CI host. It verifies the Wine loader defect, not ARM64 Box64,
 Android display, graphics, or TazUO gameplay.
 """
+import json
 import os
 from pathlib import Path
 import signal
@@ -57,4 +58,31 @@ try:
     assert code==0 and 'MEMENTO_MANAGED_OK .NET 10.0.8 System.Runtime' in positive, positive[-8000:]
     assert 'install_mono' not in positive
     print('Fixed: bundled .NET 10.0.8 loads System.Runtime and executes managed code',flush=True)
+    # Recreate the reported import layout, including spaces and an upgraded
+    # installation whose settings contain the launcher's old, ignored key.
+    runner.CLIENT=root/'client';runner.CLIENT.mkdir(exist_ok=True)
+    folder=runner.CLIENT/'Ultima-Memento/Client/TazUO-Launcher/TazUO';folder.mkdir(parents=True,exist_ok=True)
+    assets=runner.CLIENT/'Ultima-Memento/Client/Data Files';assets.mkdir(parents=True,exist_ok=True)
+    for name in ('tiledata.mul','cliloc.enu','map0.mul'):(assets/name).write_bytes(b'fixture')
+    (folder/'TazUO.exe').touch()
+    info={'executable':str((folder/'TazUO.exe').relative_to(runner.CLIENT)),
+          'settings':str((folder/'settings.json').relative_to(runner.CLIENT)),
+          'assets':str(assets.relative_to(runner.CLIENT))}
+    expected=runner.windows_path(info['assets'])
+    settings=folder/'settings.json'
+    settings.write_text(json.dumps({'ultimaonline':expected,'clientversion':'',
+                                    'username':'private-user','password':'private-password'}))
+    drive=root/'prefix/dosdevices/d:'
+    if drive.is_symlink():drive.unlink()
+    drive.symlink_to(runner.CLIENT)
+    args=[app,runner.windows_path(info['settings'])]
+    code=run(args,env,'old-settings.log')
+    assert code==2 and 'MEMENTO_CONFIG_INVALID UO directory' in (runner.LOGS/'old-settings.log').read_text()
+    supervisor.request.update(client=info)
+    supervisor.prepare_client_configuration()
+    code=run(args,env,'fixed-settings.log')
+    output=(runner.LOGS/'fixed-settings.log').read_text(errors='replace')
+    assert code==0 and 'MEMENTO_CONFIG_OK '+expected+' 7.0.15.1' in output, output[-8000:]
+    assert 'private-' not in (runner.LOGS/'client-config.json').read_text()
+    print('Fixed: Windows .NET reads the repaired settings and finds the nested Memento data directory',flush=True)
 finally:stop()

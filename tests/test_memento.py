@@ -29,10 +29,49 @@ class ImportTests(unittest.TestCase):
             settings=exe.parent/'settings.json';settings.write_text(json.dumps({'username':'test','password':'retained','clientversion':'7.0.99.1','plugins':['custom.dll']}))
             info=inspect_client(root);self.assertEqual(info['architecture'],'x64');self.assertEqual(info['dotnet_version'],'10.0.0')
             local_client_settings(root,info)
-            saved=json.loads(settings.read_text());self.assertEqual(saved['ip'],'127.0.0.1');self.assertEqual(saved['ultimaonline'],'D:\\Game files');self.assertEqual(saved['clientversion'],'7.0.99.1');self.assertEqual(saved['password'],'retained');self.assertEqual(saved['plugins'],['custom.dll'])
+            saved=json.loads(settings.read_text());self.assertEqual(saved['ip'],'127.0.0.1');self.assertEqual(saved['ultimaonlinedirectory'],'D:\\Game files');self.assertEqual(saved['clientversion'],'7.0.99.1');self.assertEqual(saved['password'],'retained');self.assertEqual(saved['plugins'],['custom.dll'])
             self.assertTrue(settings.with_suffix('.json.before-memento').exists())
             renderer_settings(root,info,'turnip');self.assertEqual(json.loads(settings.read_text())['force_driver'],3)
             renderer_settings(root,info,'virgl');self.assertEqual(json.loads(settings.read_text())['force_driver'],1)
+
+    def test_existing_import_repairs_ignored_path_and_blank_version_without_reimport(self):
+        for version in ('', ' ', None):
+            with self.subTest(version=version),tempfile.TemporaryDirectory() as d:
+                root=Path(d);exe=client_fixture(root)
+                settings=exe.parent/'settings.json'
+                original={'ultimaonline':'D:\\Game files', 'ultimaonlinedirectory':'C:\\old install',
+                          'clientversion':version,'username':'private-user','password':'private-password','fps':50}
+                settings.write_text(json.dumps(original))
+                info=inspect_client(root);report=local_client_settings(root,info)
+                saved=json.loads(settings.read_text())
+                self.assertEqual(saved['ultimaonlinedirectory'],'D:\\Game files')
+                self.assertNotIn('ultimaonline',saved)
+                self.assertEqual(saved['clientversion'],'7.0.15.1')
+                self.assertEqual(saved['password'],'private-password');self.assertEqual(saved['fps'],50)
+                backup=settings.with_suffix('.json.before-memento')
+                self.assertEqual(json.loads(backup.read_text()),original)
+                local_client_settings(root,info)
+                self.assertEqual(json.loads(backup.read_text()),original)
+                self.assertEqual(report['version_source'],'Memento default')
+                self.assertNotIn('private-',json.dumps(report))
+
+    def test_assets_at_import_root_use_absolute_drive_and_missing_files_fail_before_write(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);exe=client_fixture(root)
+            for item in (root/'Game files').iterdir():item.rename(root/item.name)
+            info=inspect_client(root);self.assertEqual(info['assets'],'.')
+            local_client_settings(root,info)
+            settings=exe.parent/'settings.json';before=settings.read_bytes()
+            self.assertEqual(json.loads(before)['ultimaonlinedirectory'],'D:\\')
+            (root/'tiledata.mul').unlink()
+            with self.assertRaisesRegex(ValueError,'missing: tiledata.mul'):local_client_settings(root,info)
+            self.assertEqual(settings.read_bytes(),before)
+
+    def test_asset_path_cannot_escape_import(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);client_fixture(root);info=inspect_client(root)
+            info['assets']='../outside'
+            with self.assertRaisesRegex(ValueError,'Unsafe file path'):local_client_settings(root,info)
 
     def test_x86_detected_and_missing_assets_rejected(self):
         with tempfile.TemporaryDirectory() as d:

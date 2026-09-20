@@ -1,12 +1,12 @@
 # UO Memento for Android
 
-## Updating Recovery 0.1.1 to 0.1.2
+## Updating Recovery to 0.1.3
 
-Save and close the realm runtime, stop the client, then install the 0.1.2 APK over **UO Memento Recovery**. The package ID and signing certificate are unchanged. Keep app data; no server rebuild, client reimport, .NET download or migration is needed.
+Save and close the realm runtime, stop the client, then install the 0.1.3 APK over **UO Memento Recovery**. The package ID and signing certificate are unchanged. Keep app data; no server rebuild, client reimport, .NET download or migration is needed.
 
-This update fixes the managed-DLL loading regression introduced in 0.1.1. Wine's builtin `mscoree` stays enabled for .NET/TazUO and is disabled only in the separate Wine setup process to suppress the Mono installer. A Wine 10 / bundled .NET 10.0.8 test reproduces the old failure and checks that the fixed environment runs managed code.
+This update fixes TazUO's “could not find the UO directory” error. The launcher now writes `ultimaonlinedirectory`, the key TazUO actually reads, and repairs earlier imports on launch. Blank client versions use Memento's documented asset/protocol version **7.0.15.1**; existing versions, credentials, plugins and other settings are retained. The original settings backup is preserved. Missing required data files are reported before Wine starts.
 
-Retry with **Turnip / 1280×720 / Native Surface / 60 FPS**. After the attempt, export **Journal → Export support logs**. Graphics, gameplay and Box64 compatibility still require device testing.
+Retry with **Turnip / 1280×720 / Native Surface / 60 FPS**. Export **Journal → Export support logs** afterward; `client-config.json` records the resolved data path and version without saved credentials. The Wine 10 / bundled .NET 10.0.8 CI probe verifies both the managed-loader fix from 0.1.2 and access to the reported nested data folder. Graphics, gameplay and Box64 compatibility still require device testing.
 
 ## 0.1.1 recovery build
 
@@ -66,6 +66,6 @@ gradle --no-daemon :app:assembleDebug :app:lintDebug
 
 The APK bundles verified ARM64 PRoot, display, audio, VirGL and Turnip components plus DXVK 2.7.1 D3D11/DXGI for x64 and x86. The server runtime currently reuses TRASC's Debian compiler rootfs and installs Mono into this app's separate copy; the client runtime reuses its Wine 10 WoW64/Box64 0.4.4 rootfs. This preserves the known Android integration without requiring a separately published UO rootfs. Runtime downloads validate their manifests and checksums. Offline archive imports are available for both rootfs downloads.
 
-The internal Java/JNI namespace is retained for compatibility with the reused native display library; the Android application ID is **`io.github.russianranger.uomemento`**. Realm control binds `127.0.0.1:18785`, game service `127.0.0.1:2593`; client X11 uses `:8` with a random cookie and local Unix sockets. No RFB TCP listener is exposed.
+The internal Java/JNI namespace is retained for compatibility with the reused native display library; the current Android application ID is **`io.github.russianranger.uomemento.recovery`**. Realm control binds `127.0.0.1:18785`, game service `127.0.0.1:2593`; client X11 uses `:8` with a random cookie and local Unix sockets. No RFB TCP listener is exposed.
 
 See [component provenance](docs/COMPONENTS.md) and [release notes](docs/RELEASE-NOTES.md).

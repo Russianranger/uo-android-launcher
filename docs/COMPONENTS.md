@@ -22,3 +22,10 @@ The first release is a compatibility preview. The inherited Wine/Box64 execution
 - Evidence: the user's 0.1.1 support bundle reaches bundled CoreCLR 10.0.8, then Wine reports `fixup_imports_ilonly mscoree.dll not found` for `System.Runtime.dll` and the process exits with code 82.
 - Wine 10 implementation: [dlls/ntdll/loader.c, fixup_imports_ilonly](https://github.com/wine-mirror/wine/blob/wine-10.0/dlls/ntdll/loader.c). This loader imports `mscoree.dll` for IL-only modules independently of which CLR hosts the app.
 - The CI probe uses the same checksum-pinned Wine 10.0 WoW64 archive as the client runtime and Microsoft's `Microsoft.NETCore.App.Runtime.win-x64` 10.0.8 runtime pack. Probe source is in `tests/managed-probe`; it contains no game files.
+
+## Client configuration regression (0.1.3)
+
+- The 0.1.2 support bundle and screenshot show TazUO's UO-directory error, followed by an empty client-version warning. The launcher had written an unknown `ultimaonline` property and only prepared the path during import.
+- Schema and startup checks: [TazUO Settings.cs](https://github.com/PlayTazUO/TazUO/blob/3212623f63436be1c0f4e3b308b202b29597c026/src/ClassicUO.Client/Configuration/Settings.cs) and [Main.cs](https://github.com/PlayTazUO/TazUO/blob/3212623f63436be1c0f4e3b308b202b29597c026/src/ClassicUO.Client/Main.cs) use `ultimaonlinedirectory`, `clientversion`, `Directory.Exists` and `tiledata.mul`.
+- The default for blank versions, **7.0.15.1**, is documented by [Memento desktop setup](https://uo-memento.com/setup/desktop-client/#server-information), verified September 20, 2026. This is the UO data/protocol version, independent of the modern TazUO/.NET build.
+- The CI fixture uses the reported `Ultima-Memento/Client/TazUO-Launcher/TazUO` and `Ultima-Memento/Client/Data Files` layout. Its .NET probe verifies Windows access through Wine's D: drive after the production configuration repair; fixture data files contain no game assets.

@@ -12,6 +12,9 @@ import zipfile
 
 REPOSITORY = 'https://github.com/Russianranger/ultima-memento.git'
 MAX_BYTES = 32 * 1024**3
+# Asset/protocol version, not the TazUO executable or .NET version.
+# https://uo-memento.com/setup/desktop-client/#server-information
+MEMENTO_CLIENT_VERSION = '7.0.15.1'
 
 
 def write_json(path, data):
@@ -121,14 +124,37 @@ def inspect_client(root):
 
 
 def local_client_settings(root, metadata):
+    root = Path(root).resolve()
     path = confined(root, metadata['settings'])
+    assets = confined(root, metadata['assets'])
+    if not assets.is_dir():
+        raise ValueError('Imported UO data directory is missing: ' + metadata['assets'])
+    files = {p.name.lower() for p in assets.iterdir() if p.is_file()}
+    missing = sorted({'tiledata.mul', 'map0.mul', 'cliloc.enu'} - files)
+    if missing:
+        raise ValueError('Imported UO data directory is incomplete; missing: ' + ', '.join(missing))
     settings = json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else {}
-    if path.exists() and not path.with_suffix('.json.before-memento').exists():
-        shutil.copy2(path, path.with_suffix('.json.before-memento'))
-    assets = metadata['assets'].replace('/', '\\')
-    settings.update(ip='127.0.0.1', port=2593, ultimaonline='D:\\'+('' if assets=='.' else assets),
+    if not isinstance(settings, dict):
+        raise ValueError('The imported settings.json must contain a JSON object')
+    backup = confined(root, path.with_suffix('.json.before-memento').relative_to(root))
+    if path.exists() and not backup.exists():
+        shutil.copy2(path, backup)
+    relative = str(assets.relative_to(root)).replace('/', '\\')
+    directory = 'D:\\' + ('' if relative == '.' else relative)
+    version_source = 'settings.json'
+    if not str(settings.get('clientversion') or '').strip():
+        settings['clientversion'] = MEMENTO_CLIENT_VERSION
+        version_source = 'Memento default'
+    # v0.1.0–0.1.2 wrote an unknown property which TazUO silently ignored.
+    settings.pop('ultimaonline', None)
+    settings.update(ip='127.0.0.1', port=2593, ultimaonlinedirectory=directory,
                     reconnect=False, autologin=False, skip_login_screen=False)
     write_json(path, settings)
+    # Explicit allowlist: support bundles must never include saved credentials.
+    return {'settings':metadata['settings'], 'ultimaonlinedirectory':directory,
+            'clientversion':settings['clientversion'], 'version_source':version_source,
+            'required_assets':sorted({'tiledata.mul', 'map0.mul', 'cliloc.enu'}),
+            'ip':'127.0.0.1', 'port':2593}
 
 
 def renderer_settings(root, metadata, renderer):

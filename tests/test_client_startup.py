@@ -18,9 +18,10 @@ class StartupTests(unittest.TestCase):
             path=root/name;path.mkdir()
             patcher=patch.object(runner,name,path);patcher.start();self.addCleanup(patcher.stop)
         self.request={'mode':'client','renderer':'software','resolution':'1280x720','display_fps':60,
-                      'audio':False,'client':{'self_contained':True,'executable':'TazUO.exe','settings':'settings.json'}}
+                      'audio':False,'client':{'self_contained':True,'executable':'TazUO.exe','settings':'settings.json','assets':'.'}}
         (runner.CLIENT/'TazUO.exe').touch()
         (runner.CLIENT/'settings.json').write_text('{}')
+        for name in ('tiledata.mul','map0.mul','cliloc.enu'):(runner.CLIENT/name).touch()
 
     def test_prefix_upgrade_repairs_once_and_failed_check_retries(self):
         marker=runner.PREFIX/'memento-prefix-ready';marker.touch() # v0.1.0 marker
@@ -63,6 +64,17 @@ class StartupTests(unittest.TestCase):
         self.assertIn('mscoree=b',env['WINEDLLOVERRIDES'].split(';'))
         self.assertEqual(env['DOTNET_HOST_TRACE'],'1')
         self.assertEqual(env['DOTNET_HOST_TRACEFILE'],'Z:\\logs\\client-dotnet-host.log')
+        config=json.loads((runner.CLIENT/'settings.json').read_text())
+        self.assertEqual(config['ultimaonlinedirectory'],'D:\\')
+        self.assertEqual(config['clientversion'],'7.0.15.1')
+        self.assertEqual(config['force_driver'],1)
+
+    def test_missing_data_stops_before_display_or_wine_and_keeps_settings(self):
+        (runner.CLIENT/'tiledata.mul').unlink()
+        supervisor=runner.Supervisor(self.request);supervisor.spawn=Mock()
+        with self.assertRaisesRegex(ValueError,'missing: tiledata.mul'):supervisor.start()
+        supervisor.spawn.assert_not_called()
+        self.assertEqual((runner.CLIENT/'settings.json').read_text(),'{}')
 
     def test_dotnet_preflight_enables_builtin_loader_without_losing_renderer_overrides(self):
         for renderer,dlls in (('turnip','d3d11,dxgi=n'),('software','d3d11,dxgi=b')):
