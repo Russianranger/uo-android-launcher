@@ -1,10 +1,13 @@
 # UO Memento for Android
 
-## Updating from 0.1.0
+## 0.1.1 recovery build
 
-Save and stop the server, then install the 0.1.1 APK over the existing app. Keep app data: do not uninstall. The update repairs log export, suppresses Wine's Mono installer and supplies the missing XComposite library automatically. Existing runtimes, client files, .NET and world saves are reused.
+The original preview's signing key was not saved by CI, so 0.1.1 installs separately as **UO Memento Recovery**. Keep the original app installed; do not clear its data. The new APK fixes log export and the evidenced Wine startup issues.
 
-Export the previous attempt's logs from **Journal → Export support logs**, then retry **Client → Launch TazUO**. If it exits, export another support ZIP. It now includes .NET host traces and TazUO's timestamped crash reports even when the client is in a subfolder. On-device .NET 10 gameplay remains unverified.
+Use the [recovery guide](docs/RECOVERY.md) to copy your complete installation with the supplied ADB tool, or export the world from the old Saves tab and set up the recovery app separately. The tool can also export the old logs without using the broken export button.
+
+After migration, retry **Client → Launch TazUO** and export a support ZIP from the Journal. On-device .NET 10 gameplay remains unverified.
+
 
 A standalone ARM64 Android launcher for **Ultima Memento + the imported Windows TazUO client**, with a gold UO shield and a retro fantasy interface.
 

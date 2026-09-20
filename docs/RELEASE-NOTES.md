@@ -1,4 +1,4 @@
-# UO Memento 0.1.1 — diagnostics and startup fixes
+# UO Memento 0.1.1 — recovery preview
 
 - Fix support ZIP export failing with “Unsafe archive path” on Android directory aliases.
 - Include TazUO timestamped crash reports, including clients imported inside subfolders; keep settings, packet logs and chat files excluded.
@@ -9,6 +9,10 @@
 - Use the device CPU count instead of the runtime's stock 64-CPU override.
 - Capture .NET host startup traces, flush process logs promptly, and report immediate client exits.
 
-Save and stop the server before updating. Install this APK over 0.1.0; do not uninstall or clear app data. The release build verifies that both APKs use the same signing certificate. Existing realm files, saves, client imports and .NET installation remain in place.
+## Installation: recovery app, not an in-place update
 
-After updating, export the existing logs from Journal, then retry Launch TazUO. If it exits again, export a fresh support ZIP. The reported export failure was reproduced and fixed in a host regression test. APK/lint, controller, Python and real server compilation checks run in CI. The .NET 10 game session still needs an on-device retest; these screenshots do not establish the final cause of the client exit.
+The original 0.1.0 CI workflow did not save its signing key. The key could not be recovered, so Android cannot accept an in-place update. This release uses the separate identity `io.github.russianranger.uomemento.recovery` and the launcher name **UO Memento Recovery**. Keep the old app installed and do not clear its data.
+
+Read [the recovery guide](https://github.com/Russianranger/uo-android-launcher/blob/main/docs/RECOVERY.md). The attached `recover-preview.py` can export old logs or back up/copy the complete installation to the recovery app with ADB. A computer-free path is to export the old world from Saves, prepare the recovery app, and restore that ZIP. Only run one app at a time because their localhost ports overlap.
+
+The fixed exporter passed an Android-alias regression that reproduces the exact reported failure. APK build/lint, controller checks, Python tests and real Memento compilation passed. The ADB helper has host tests, but device migration and the .NET 10 game session still need retesting. The screenshots do not establish the final cause of the client exit.
