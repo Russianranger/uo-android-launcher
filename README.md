@@ -1,12 +1,14 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.1.4
+## Updating Recovery to 0.1.5
 
-Save and close the realm runtime, stop the client, then install the 0.1.4 APK over **UO Memento Recovery**. Keep app data; no server rebuild, client reimport, .NET download or migration is needed. CI checks the existing signing certificate.
+Save and close the realm runtime, stop the client, then install the 0.1.5 APK over **UO Memento Recovery**. Keep app data; no server rebuild, client reimport, .NET download or migration is needed. CI checks the existing signing certificate.
 
 **1098×720 world + gump space** is enabled by default at **1280×720**. It sets a fixed borderless world viewport on the left and leaves **182 pixels** on the right for gumps. Existing and new character profiles receive the layout; other settings and saved gumps are preserved. Original profiles are backed up once beside each JSON as `.json.before-memento-layout`. Turn this option off to manage the layout within TazUO; turning it off does not restore the old layout automatically.
 
-Use **Turnip / Vulkan / 1280×720 / Native Surface / 60 FPS**. The imported TazUO 5.2.0 does not support the old auto-driver value: it chose software OpenGL. This update selects its supported Vulkan driver. The reported crash is in movement/pathfinding; its underlying exception is not yet known. `client-managed.log` adds bounded exception capture, and `client-config.json` records version/layout diagnostics without saved credentials. Export **Journal → Export support logs** after testing. Wine/.NET checks run in CI; ARM64 Box64, Adreno rendering and world stability still require device testing.
+Use **Turnip / Vulkan / 1280×720 / Native Surface / 60 FPS**. Version 0.1.5 fixes a startup race that opened the display before Native Surface and relative input were ready. In the 0.1.4 test this silently left the display on RFB. Check **Native Surface** in the gear menu after upgrading.
+
+The new crash log identifies `InvalidOperation_EnumFailedVersion` in TazUO 5.2.0's render list. Its underlying cause is still under investigation. This update reduces exception-tracing overhead and adds bounded FNA graphics logs plus the client's own FPS counter, focus state and scene. Export **Journal → Export support logs** after a 15-minute movement test, even if stable. CI verifies startup readiness and diagnostics; device performance and crash stability still require testing.
 
 ## 0.1.1 recovery build
 
@@ -60,6 +62,7 @@ World archives include accounts and characters but exclude game asset files and 
 ```sh
 python3 -m unittest discover -s tests -v
 bash scripts/check-input.sh
+bash scripts/check-client-readiness.sh
 python3 scripts/prepare-assets.py
 bash scripts/build-diagnostics.sh
 gradle --no-daemon :app:assembleDebug :app:lintDebug

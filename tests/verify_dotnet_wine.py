@@ -98,4 +98,16 @@ try:
     assert 'Hook active: .NET 10.0.8' in captured and 'PATHFINDER FIRST CHANCE' in captured, captured
     assert 'System.IndexOutOfRangeException' in captured and 'ClassicUO.Game.Pathfinder.CreateItemList' in captured, captured
     print('Verified: managed startup hook captures a pathfinding exception before FailFast termination',flush=True)
+    code=run([app,'--render-throw'],env,'render-throw.log',45)
+    captured=(runner.LOGS/'client-managed.log').read_text(errors='replace')
+    assert code not in (0,124), (code,captured)
+    assert 'RENDER LIST FIRST CHANCE' in captured and 'System.InvalidOperationException' in captured, captured
+    assert 'ClassicUO.Game.Scenes.GameScene.DrawRenderList' in captured
+    print('Verified: collection mutation records its original throwing stack and unhandled report',flush=True)
+    code=run([app,'--graphics-probe'],env,'graphics-probe.log',45)
+    captured=(runner.LOGS/'client-managed.log').read_text(errors='replace')
+    assert code==0, (runner.LOGS/'graphics-probe.log').read_text(errors='replace')
+    assert 'FNA LogInfo: FNA3D Driver: probe-renderer' in captured, captured
+    assert 'CLIENT SAMPLE fps=47 active=True scene=GameScene' in captured, captured
+    print('Verified: graphics logging preserves existing handlers and samples cached client FPS',flush=True)
 finally:stop()

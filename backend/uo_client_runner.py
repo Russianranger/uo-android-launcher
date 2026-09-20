@@ -30,7 +30,7 @@ class Supervisor:
         self.children=[]
         self.threads=[]
         self.root=Path(__file__).parent
-        self.status={'phase':'starting','resolution':request['resolution'],'display_target_fps':request['display_fps']}
+        self.status={'phase':'starting','display_ready':False,'resolution':request['resolution'],'display_target_fps':request['display_fps']}
         self.env=dict(os.environ,DISPLAY=':8',XAUTHORITY='/session/Xauthority',WINEPREFIX='/prefix',WINEARCH='win64',
                       # Wine's IL-only DLL loader requires mscoree even with modern
                       # CoreCLR. Disable it only in the wineboot child environment.

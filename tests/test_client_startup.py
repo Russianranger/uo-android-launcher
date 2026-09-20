@@ -80,6 +80,34 @@ class StartupTests(unittest.TestCase):
         supervisor.spawn.assert_not_called()
         self.assertEqual((runner.CLIENT/'settings.json').read_text(),'{}')
 
+    def test_display_readiness_is_published_after_presentation_and_input(self):
+        supervisor=runner.Supervisor(self.request);supervisor.run=Mock()
+        display=Mock();display.poll.return_value=None
+        supervisor.spawn=Mock(return_value=display)
+        (runner.SESSION/'display.sock').touch()
+        seen=[]
+        def presentation(s):
+            seen.append('presentation')
+            self.assertFalse(s.status['display_ready'])
+            return {'presentation_active':'native_surface'}
+        def controls(s):
+            seen.append('input')
+            self.assertFalse(s.status['display_ready'])
+            self.assertEqual(s.status['presentation_active'],'native_surface')
+            return {'pointer_transport':'relative_xtest'}
+        def prefix():
+            self.assertEqual(seen,['presentation','input'])
+            # The real method marks the display ready only after these helpers.
+            runner.Supervisor.prepare_prefix(supervisor)
+            self.assertTrue(supervisor.status['display_ready'])
+            self.assertEqual(supervisor.status['pointer_transport'],'relative_xtest')
+            raise RuntimeError('test finished before client spawn')
+        supervisor.prepare_prefix=prefix
+        with patch.object(runner.subprocess,'run'),patch.object(runner.client_presentation,'start',side_effect=presentation),\
+             patch.object(runner.client_presentation,'start_input',side_effect=controls):
+            with self.assertRaisesRegex(RuntimeError,'test finished'):supervisor.start()
+        self.assertEqual(supervisor.spawn.call_count,1)
+
     def test_dotnet_preflight_enables_builtin_loader_without_losing_renderer_overrides(self):
         for renderer,dlls in (('turnip','d3d11,dxgi=b'),('software','d3d11,dxgi=b')):
             with self.subTest(renderer=renderer):
