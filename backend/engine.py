@@ -166,7 +166,12 @@ class Engine:
         elif destination.exists():
             saved=destination.with_name('Files.before-client-import-'+str(time.time_ns()))
             os.replace(destination,saved)
-        destination.symlink_to(source,target_is_directory=True)
+        # Wine is case-insensitive; Mono on Linux is not. Expose lowercase
+        # asset names to Memento without renaming the imported client files.
+        destination.mkdir()
+        for asset in source.iterdir():
+            if asset.is_file():
+                (destination/asset.name.lower()).symlink_to(asset)
 
     def import_client_zip(self,args):
         self.require_stopped()

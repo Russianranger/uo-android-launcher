@@ -69,6 +69,16 @@ class ImportTests(unittest.TestCase):
 
 
 class WorldTests(unittest.TestCase):
+    def test_server_asset_aliases_handle_windows_filename_case(self):
+        with tempfile.TemporaryDirectory() as d:
+            engine=Engine(Path(d));engine.world.mkdir();engine.client.mkdir(parents=True)
+            (engine.client/'TILEDATA.MUL').write_bytes(b'asset')
+            (engine.client/'memento-client.json').write_text(json.dumps({'assets':'.'}))
+            engine.link_assets()
+            self.assertEqual((engine.world/'Data/Files/tiledata.mul').read_bytes(),b'asset')
+            self.assertTrue((engine.client/'TILEDATA.MUL').exists())
+            engine.pool.shutdown()
+
     def test_backup_restore_excludes_assets_preserves_accounts_and_pre_restore_backup(self):
         with tempfile.TemporaryDirectory() as d:
             engine=Engine(Path(d));saves=engine.world/'Saves/Accounts';saves.mkdir(parents=True);(saves/'accounts.xml').write_text('original accounts')
