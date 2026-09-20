@@ -83,8 +83,7 @@ final class ClientRuntime {
             }
             TarExtractor.remove(run);TarExtractor.remove(tmp);run.mkdirs();tmp.mkdirs();prefix.mkdirs();client.mkdirs();dotnet.mkdirs();
             File backend=new File(server.home,"client-backend");backend.mkdirs();
-            try(InputStream in=context.getAssets().open("Memento.Diagnostics.dll")){RuntimeManager.copy(in,new File(backend,"Memento.Diagnostics.dll"));}
-            for(String name:new String[]{"uo_client_runner.py","uo_content.py","client_presentation.py","client_audio.py","log_retention.py","graphics_probe.py","runtime_probe.py","x11-frame-bridge","presentation-bundle.json","libasound_module_pcm_trasc.so","audio-bundle.json","turnip-26.0.0.so","libXcomposite.so.1","dxvk-d3d11-x64.dll","dxvk-dxgi-x64.dll","dxvk-d3d11-x86.dll","dxvk-dxgi-x86.dll"})try(InputStream in=context.getAssets().open(name)){RuntimeManager.copy(in,new File(backend,name));}
+            for(String name:ClientRuntimeAssets.FILES)try(InputStream in=context.getAssets().open(name)){RuntimeManager.copy(in,new File(backend,name));}
             new File(backend,"x11-frame-bridge").setExecutable(true,true);
             RuntimeManager.write(new File(run,"request.json"),request.toString());
             RuntimeManager.write(new File(root,"etc/hosts"),"127.0.0.1 localhost\n::1 localhost\n");

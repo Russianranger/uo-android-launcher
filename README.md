@@ -1,10 +1,12 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.1.8
+## Updating Recovery to 0.1.9
 
-Save and close the realm runtime, stop the client, then install the 0.1.8 APK over **UO Memento Recovery**. Keep app data; no server rebuild, client reimport, .NET download or migration is needed. CI checks the existing signing certificate.
+Save and close the realm runtime, stop the client, then install the 0.1.9 APK over **UO Memento Recovery**. Keep app data; no server rebuild, client reimport, .NET download or migration is needed. CI checks the existing signing certificate.
 
-This is a **freeze investigation build**, not a confirmed stability fix. The 0.1.7 log reached `GameScene` at 19:23:40 UTC, then managed samples and game audio stopped while the Android display/input transports remained available. No current managed/native exception identifies the cause. A cached FPS value and a live display connection do not prove the game is advancing.
+**0.1.9 fixes the confirmed startup regression in 0.1.8.** The new `client_health.py` file was packaged in the APK but missing from the Android copy list, so Python exited with `ModuleNotFoundError` before Wine or TazUO started. Android now deploys it using a shared asset list. CI stages that exact list from the built APK and imports the launcher in an isolated Python process; it also reproduces the failure by removing the deployed module.
+
+The earlier in-game freeze remains unresolved. This hotfix restores startup so the diagnostic comparison can proceed; it does not change Wine, Box64, graphics, the imported client or game settings.
 
 **Detailed client diagnostics is now off by default**, including on upgrade. This removes the launcher's injected .NET startup hook, assembly/exception callbacks, graphics logger attachment and managed sampling from normal play. The hook's involvement is unproven; disabling it is a controlled comparison. Native Wine/Box64 crash output and support export still work. A bounded `client-health.log` records process CPU ticks, memory, thread states and available wait channels from outside Wine, including when managed logging stops. It never attaches a debugger or pauses the game. Android may restrict individual `/proc` fields; unavailable data is recorded without stopping play.
 
