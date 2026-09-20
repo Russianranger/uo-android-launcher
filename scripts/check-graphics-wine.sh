@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Wine services retain X connections after the first process exits. Keep the
+# same display for both variants and stop services before xvfb-run tears down.
+if [ "${MEMENTO_GRAPHICS_XVFB:-}" != 1 ]; then
+  exec xvfb-run -a env MEMENTO_GRAPHICS_XVFB=1 bash "$0"
+fi
 probe="$PWD/runtime-work/sdl-probe"
 mkdir -p "$probe/logs" "$probe/sdk" "$probe/original" "$probe/updated"
 python3 scripts/prepare-sdl.py
@@ -21,8 +26,10 @@ export WINEPREFIX="$PWD/runtime-work/dotnet-wine/prefix" WINEDEBUG=-all,err+all
 export WINEDLLOVERRIDES='winemenubuilder,mshtml=;mscoree=b;d3d11,dxgi=b'
 export FNA3D_FORCE_DRIVER=Vulkan SDL_GPU_DRIVER=vulkan
 wine="$PWD/runtime-work/dotnet-wine/wine/bin/wine"
+wine_server="$PWD/runtime-work/dotnet-wine/wine/bin/wineserver"
+trap 'timeout 15 "$wine_server" -k; timeout 15 "$wine_server" -w' EXIT
 for variant in original updated; do
-  if ! timeout 120 xvfb-run -a "$wine" "$probe/$variant/probe.exe" > "$probe/logs/$variant.log" 2>&1; then
+  if ! timeout 120 "$wine" "$probe/$variant/probe.exe" > "$probe/logs/$variant.log" 2>&1; then
     cat "$probe/logs/$variant.log"; exit 1
   fi
   cat "$probe/logs/$variant.log"
