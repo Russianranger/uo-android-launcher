@@ -1,20 +1,14 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.1.9
+## Updating Recovery to 0.1.10
 
-Save and close the realm runtime, stop the client, then install the 0.1.9 APK over **UO Memento Recovery**. Keep app data; no server rebuild, client reimport, .NET download or migration is needed. CI checks the existing signing certificate.
+Install the 0.1.10 APK over **UO Memento Recovery** after saving/stopping the realm and stopping the client. Keep app data. No runtime download, server rebuild or client reimport is required.
 
-**0.1.9 fixes the confirmed startup regression in 0.1.8.** The new `client_health.py` file was packaged in the APK but missing from the Android copy list, so Python exited with `ModuleNotFoundError` before Wine or TazUO started. Android now deploys it using a shared asset list. CI stages that exact list from the built APK and imports the launcher in an isolated Python process; it also reproduces the failure by removing the deployed module.
+The newest bundle reaches the client and then faults in Turnip during `vkDestroyImageView`. **0.1.10 is a graphics compatibility preview, not a verified cure for the Thor crashes.** It brings upstream SDL Vulkan resource-lifetime fixes to the exact recognized TazUO 5.2 x64 library pair. The original SDL is preserved; custom/newer clients are left untouched. Active DLL hashes and the applied/skipped action appear in support logs. See [the evidence and verification limits](docs/RELEASE-NOTES.md).
 
-The earlier in-game freeze remains unresolved. This hotfix restores startup so the diagnostic comparison can proceed; it does not change Wine, Box64, graphics, the imported client or game settings.
+Leave **SDL Vulkan resource fixes ON**, **Memory compatibility OFF**, and **Detailed client diagnostics OFF**. Use Turnip, Native Surface, 60 FPS and 1280×720. The **1098×720 world view** leaves **182 pixels** on the right for gumps. Controller mappings, saves, profiles and game data remain intact. Disable the SDL option and relaunch to restore its original backed-up library.
 
-**Detailed client diagnostics is now off by default**, including on upgrade. This removes the launcher's injected .NET startup hook, assembly/exception callbacks, graphics logger attachment and managed sampling from normal play. The hook's involvement is unproven; disabling it is a controlled comparison. Native Wine/Box64 crash output and support export still work. A bounded `client-health.log` records process CPU ticks, memory, thread states and available wait channels from outside Wine, including when managed logging stops. It never attaches a debugger or pauses the game. Android may restrict individual `/proc` fields; unavailable data is recorded without stopping play.
-
-Keep **Memory compatibility OFF** and **Detailed client diagnostics OFF** for this test. Use your existing **Turnip / Vulkan / 1280×720 / Native Surface / 60 FPS** settings. Launch, log in and enter the world. If it freezes, leave it open for about 20 seconds to capture activity, then return to the launcher and export **Journal → Export support logs**. Otherwise continue normal play and export after the session. The UI remembers an explicit diagnostic opt-in for later comparison.
-
-**1098×720 world + gump space** remains enabled by default at **1280×720**, leaving **182 pixels** on the right for gumps. Existing and new character profiles receive the layout; other settings and saved gumps are preserved. Original profiles are backed up once beside each JSON as `.json.before-memento-layout`. Turning the option off leaves the current layout for you to edit within TazUO.
-
-Wine setup, preflight, desktop and teardown retain `STRONGMEM=1` / `WEAKBARRIER=1`. The optional stricter memory profile only affects the game launch. No imported TazUO binaries, JIT/GC settings or runtime downloads change in this release. The user's Bannerhub configuration is recorded in [the runtime comparison](docs/RUNTIME-COMPARISON.md); it uses FEX and ARM64X Wine, which are a different execution stack from the current Box64/x64 Wine runtime.
+0.1.9's missing-module startup fix and the packaged-APK import gate are retained. The user's [Bannerhub configuration](docs/RUNTIME-COMPARISON.md) uses FEX/ARM64X Wine; this release still uses Box64/x64 Wine and does not claim to reproduce that stack.
 
 ## 0.1.1 recovery build
 
