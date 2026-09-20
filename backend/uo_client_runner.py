@@ -10,7 +10,7 @@ import threading
 import time
 import client_audio
 import client_presentation
-from uo_content import confined, write_json, renderer_settings
+from uo_content import confined, write_json, local_client_settings, renderer_settings
 
 SESSION=Path('/session')
 PREFIX=Path('/prefix')
@@ -119,10 +119,21 @@ class Supervisor:
         return dict(self.env,DOTNET_HOST_TRACE='1',DOTNET_HOST_TRACEFILE=trace,DOTNET_HOST_TRACE_VERBOSITY='3',
                     COREHOST_TRACE='1',COREHOST_TRACEFILE=trace,COREHOST_TRACE_VERBOSITY='3')
 
+    def prepare_client_configuration(self):
+        self.update('checking_client')
+        info=self.request['client']
+        if not confined(CLIENT,info['executable']).is_file():
+            raise ValueError('Imported client executable is missing')
+        # Repair existing imports on APK upgrade, before opening the display.
+        report=local_client_settings(CLIENT,info)
+        renderer_settings(CLIENT,info,self.request['renderer'])
+        write_json(LOGS/'client-config.json',report)
+
     def start(self):
         request=self.request
         if request['mode'] not in ('desktop','client') or request['renderer'] not in ('turnip','virgl','software') or request['resolution'] not in ('800x600','1024x768','1280x720'):
             raise ValueError('Invalid launch options')
+        if request['mode']=='client':self.prepare_client_configuration()
         self.update('checking_libraries')
         self.run(['/usr/bin/python3','-c','import ctypes; ctypes.CDLL("libXcomposite.so.1"); print("XComposite ready")'],
                  log='client-dependencies.log',timeout=30)
@@ -162,8 +173,6 @@ class Supervisor:
             cwd=CLIENT
         else:
             info=request['client'];exe=confined(CLIENT,info['executable'])
-            if not exe.is_file():raise ValueError('Imported client executable is missing')
-            renderer_settings(CLIENT,info,request['renderer'])
             if not info['self_contained']:
                 installed=json.loads(Path('/dotnet/memento-dotnet.json').read_text())
                 if installed['architecture']!=info['architecture'] or installed['version'].split('.')[:2]!=info['dotnet_version'].split('.')[:2]:

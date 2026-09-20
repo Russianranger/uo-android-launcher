@@ -1,20 +1,23 @@
-# UO Memento Recovery 0.1.2 — managed client loader fix
+# UO Memento Recovery 0.1.3 — client data directory fix
 
-The 0.1.1 support bundle showed TazUO loading its bundled .NET 10.0.8 and then failing with Wine's `mscoree.dll not found` error for `System.Runtime.dll`. The launcher disabled that DLL globally to suppress Wine's Mono installer. Wine's IL-only DLL loader still needs it when running modern .NET.
+The 0.1.2 test reached TazUO's own startup checks. It could not find the data directory because the launcher wrote `ultimaonline`, while TazUO reads `ultimaonlinedirectory`. The log also showed a blank client version.
 
-- Enable builtin `mscoree` for TazUO, .NET preflight, and the Wine desktop.
-- Disable it only in the independent Wine setup environment, keeping the Mono installer suppressed.
-- Add a real Wine 10 / self-contained Windows .NET 10.0.8 regression: reproduce the disabled-loader failure, then execute managed code with the fixed launch environment.
-- Preserve the existing server, saves, imported client, .NET and graphics/controller settings.
+- Write the correct Windows data path and repair existing imports automatically at launch.
+- Fill blank versions with Memento's documented **7.0.15.1** asset/protocol version. Preserve existing versions, credentials, plugins and other settings, and retain the original settings backup.
+- Check for `tiledata.mul`, `cliloc.enu` and `map0.mul` before opening Wine.
+- Include the resolved configuration in `client-config.json` support diagnostics, excluding saved credentials.
+- Extend the real Wine 10 / Windows .NET 10.0.8 test to reproduce the ignored-key failure and verify the repaired nested Memento data path.
 
 ## Update and test
 
-1. In **UO Memento Recovery 0.1.1**, save and close the realm runtime and stop the client.
-2. Install the 0.1.2 APK over Recovery. Do not uninstall or clear app data. CI verifies that it uses the same package ID and signing certificate as 0.1.1.
+1. In **UO Memento Recovery**, save and close the realm runtime and stop the client.
+2. Install the 0.1.3 APK over Recovery. Do not uninstall or clear app data. CI verifies its package ID and signing certificate against the existing Recovery release.
 3. Open the realm runtime and start your existing server. No rebuild is needed.
-4. Launch TazUO using Turnip, 1280×720, Native Surface and 60 FPS. No reimport or .NET preparation is needed for the reported self-contained client.
-5. Export support logs after testing. Tell us whether it reaches login, character selection and the world.
+4. Launch TazUO using Turnip, 1280×720, Native Surface and 60 FPS. Settings repair happens automatically; no reimport or .NET preparation is needed.
+5. Export support logs after testing. Report whether you reach login, character selection and the world.
 
-The regression test runs Wine directly on an x86-64 CI host. It verifies the managed-loader fix; it does not prove ARM64 Box64, Adreno graphics or TazUO gameplay compatibility on the Thor.
+The Wine/.NET regression runs on an x86-64 CI host and checks configuration and managed loading. ARM64 Box64, Adreno rendering and TazUO gameplay still need device validation.
 
-If still using the original **0.1.0** app, its signing key is different; use the [recovery guide](https://github.com/Russianranger/uo-android-launcher/blob/main/docs/RECOVERY.md) first. The included recovery helper remains available for that older migration.
+Sources: [TazUO settings schema](https://github.com/PlayTazUO/TazUO/blob/3212623f63436be1c0f4e3b308b202b29597c026/src/ClassicUO.Client/Configuration/Settings.cs), [Memento client setup](https://uo-memento.com/setup/desktop-client/#server-information).
+
+For the original **0.1.0** app, follow the [recovery guide](https://github.com/Russianranger/uo-android-launcher/blob/main/docs/RECOVERY.md) first; its signing key differs. The included recovery helper remains available for that older migration.
