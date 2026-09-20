@@ -27,10 +27,13 @@ int main(void) {
     HMODULE fna = LoadLibraryA("FNA3D.dll");
     REQUIRE(fna);
     LOAD(HookLogFunctions); LOAD(PrepareWindowAttributes); LOAD(CreateDevice);
+    LOAD(LinkedVersion);
     LOAD(DestroyDevice); LOAD(CreateTexture2D); LOAD(AddDisposeTexture);
     LOAD(SetRenderTargets); LOAD(Clear); LOAD(GetTextureData2D);
     LOAD(SwapBuffers); LOAD(ResetBackbuffer); LOAD(SetViewport); LOAD(SetScissorRect);
     pHookLogFunctions(log_message, log_message, log_error);
+    printf("Graphics fixture SDL=%d FNA3D=%u\n", SDL_GetVersion(), pLinkedVersion());
+    fflush(stdout);
     SDL_Window *window = SDL_CreateWindow("TazUO graphics compatibility", 640, 480, pPrepareWindowAttributes());
     REQUIRE(window);
     FNA3D_PresentationParameters pp = {0};
@@ -68,7 +71,7 @@ int main(void) {
         pGetTextureData2D(device, binding.texture, 0, 0, 1, 1, 0, pixel, sizeof(pixel));
         REQUIRE(pixel[0] == ((frame % 2) ? 255 : 0) && pixel[1] == 0 && pixel[2] == 0 && pixel[3] == 255);
         for (int n = 0; n < 16; n++) pAddDisposeTexture(device, textures[n]);
-        pSwapBuffers(device, NULL, NULL, NULL);
+        pSwapBuffers(device, NULL, NULL, window);
         SDL_PumpEvents();
     }
     pDestroyDevice(device);
