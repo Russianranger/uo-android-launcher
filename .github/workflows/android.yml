@@ -1,0 +1,95 @@
+name: Build and verify UO Memento
+on:
+  push:
+    branches: [main, codex/memento-launcher]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: memento-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: python3 -m unittest discover -s tests -v
+      - run: bash scripts/check-input.sh
+      - name: Compile the real Memento server and game scripts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y mono-devel libgdiplus
+          git clone https://github.com/Russianranger/ultima-memento.git runtime-work/memento
+          git -C runtime-work/memento checkout 916d1ec666376ef44366c986befa3200deb93eb0
+          python3 tests/verify_server_compile.py runtime-work/memento > runtime-work/server-compile.log 2>&1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-verification
+          path: runtime-work/server-compile.log
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - run: python3 scripts/prepare-assets.py
+      - uses: actions/cache@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: ~/.android/debug.keystore
+          key: memento-preview-signing-v1
+      - run: gradle --no-daemon :app:assembleDebug :app:lintDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uo-memento-apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            runtime-work/downloads/runtime-bridges.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-reports
+          path: app/build/reports/
+  release:
+    if: github.ref == 'refs/heads/main'
+    needs: [verify, apk]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: uo-memento-apk
+          path: dist
+      - name: Preserve corresponding sources and publish the test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.1.0.apk
+          mv dist/runtime-work/downloads/runtime-bridges.zip dist/runtime-bridges.zip
+          curl -fL --retry 3 https://github.com/Russianranger/trasc-server-android/releases/download/preview/launcher-sources.tar.gz -o dist/runtime-corresponding-sources.tar.gz
+          echo '492043660b1370e1910c8b8ca2b93be1f637f4929034f575591f14e67e015243  dist/runtime-corresponding-sources.tar.gz' | sha256sum --check
+          git archive --format=zip --output=dist/UO-Memento-0.1.0-source.zip HEAD
+          sha256sum dist/UO-Memento-0.1.0.apk > dist/SHA256SUMS.txt
+          if ! gh release view v0.1.0 >/dev/null 2>&1; then
+            gh release create v0.1.0 --target "$GITHUB_SHA" --prerelease --title 'UO Memento 0.1.0 — Thor preview' --notes-file docs/RELEASE-NOTES.md
+          fi
+          gh release upload v0.1.0 dist/UO-Memento-0.1.0.apk dist/UO-Memento-0.1.0-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt --clobber

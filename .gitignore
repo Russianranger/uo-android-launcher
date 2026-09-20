@@ -1,0 +1,11 @@
+.gradle/
+**/build/
+local.properties
+runtime-work/
+__pycache__/
+*.pyc
+*.keystore
+dist/
+ui-reports/
+backend-assets/
+app/src/main/jniLibs/
