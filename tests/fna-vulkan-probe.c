@@ -6,9 +6,15 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "FNA3D.h"
 
-#define LOAD(name) __typeof__(&FNA3D_##name) p##name = (__typeof__(&FNA3D_##name)) GetProcAddress(fna, "FNA3D_" #name); if (!p##name) return 3
+#define LOAD(name) \
+    FARPROC raw##name = GetProcAddress(fna, "FNA3D_" #name); \
+    __typeof__(&FNA3D_##name) p##name; \
+    _Static_assert(sizeof(p##name) == sizeof(raw##name), "Function pointer size"); \
+    memcpy(&p##name, &raw##name, sizeof(p##name)); \
+    if (!p##name) return 3
 #define REQUIRE(expr) do { if (!(expr)) { fprintf(stderr, "FAIL %s: %s\n", #expr, SDL_GetError()); return 2; } } while (0)
 static void log_message(const char *message) { puts(message); fflush(stdout); }
 static void log_error(const char *message) { fprintf(stderr, "FNA ERROR: %s\n", message); exit(4); }

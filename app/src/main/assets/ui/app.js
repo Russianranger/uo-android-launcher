@@ -39,6 +39,8 @@ async function refresh(){
         [nativeState,clientState]=await Promise.all([call('native_state'),call('client_native_state')]);
         $('runtime-status').textContent=nativeState.status;$('storage').textContent=(nativeState.free_bytes/1073741824).toFixed(1)+' GB free';
         $('client-status').textContent=clientState.launch?.error||(clientState.alive?(clientState.launch?.phase||clientState.status):clientState.status);
+        const graphics=clientState.launch?.sdl_graphics;
+        $('sdl-graphics-status').textContent=!graphics?'':graphics.active_version==='3.4.16'?'Last launch: SDL 3.4.16 active.':graphics.action==='restored_original'?'Last launch: original graphics library restored.':graphics.action==='unchanged_unrecognized_libraries'?'Last launch: this client’s graphics libraries were left as imported.':'Last launch: original graphics library active.';
         if(nativeState.alive){
             const state=await call('state');$('server-badge').textContent=state.running?'ONLINE':'OFFLINE';$('server-badge').classList.toggle('online',state.running);
             if(state.build)$('build-info').textContent='Built '+state.build.revision.slice(0,12)+' · '+state.build.ref;
