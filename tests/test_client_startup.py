@@ -90,7 +90,7 @@ class StartupTests(unittest.TestCase):
             runner.Supervisor(dict(self.request,client_memory_compatibility='false'))
 
     def test_setup_kill_does_not_relabel_old_game_crash_as_current(self):
-        for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json'):
+        for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json','client-health.log'):
             (runner.LOGS/name).write_text('previous game crash')
         supervisor=runner.Supervisor(dict(self.request,client_memory_compatibility=True))
         display=Mock();display.poll.return_value=None
@@ -111,10 +111,38 @@ class StartupTests(unittest.TestCase):
         self.assertEqual(state['setup_log'],'client-prefix.log')
         self.assertTrue(state['attempt_started_utc'].endswith('Z'))
         self.assertEqual(supervisor.spawn.call_count,2) # display and wineboot, no game
-        for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json'):
+        for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json','client-health.log'):
             self.assertFalse((runner.LOGS/name).exists())
             from log_retention import history
             self.assertEqual(history(runner.LOGS/name,1).read_text(),'previous game crash')
+
+    def test_managed_hook_is_explicit_opt_in_and_game_only(self):
+        with patch.dict(runner.os.environ,{'DOTNET_STARTUP_HOOKS':'inherited.dll','MEMENTO_MANAGED_LOG':'inherited.log'}):
+            for option in (None, False, True):
+                request=dict(self.request)
+                if option is not None:request['managed_diagnostics']=option
+                supervisor=runner.Supervisor(request)
+                supervisor.root=runner.SESSION
+                hook=supervisor.root/'Memento.Diagnostics.dll'
+                hook.unlink(missing_ok=True)
+                if option is True:
+                    with self.assertRaisesRegex(RuntimeError,'diagnostics component is missing'):supervisor.client_environment()
+                    hook.touch()
+                env=supervisor.client_environment()
+                if option is True:
+                    self.assertTrue(env['DOTNET_STARTUP_HOOKS'].endswith('Memento.Diagnostics.dll'))
+                    self.assertEqual(env['MEMENTO_MANAGED_LOG'],'Z:\\logs\\client-managed.log')
+                else:
+                    self.assertNotIn('DOTNET_STARTUP_HOOKS',env)
+                    self.assertNotIn('MEMENTO_MANAGED_LOG',env)
+                for baseline in (supervisor.env,supervisor.setup_environment(),supervisor.dotnet_environment('check.log')):
+                    self.assertNotIn('DOTNET_STARTUP_HOOKS',baseline)
+                report=json.loads((runner.LOGS/'client-compatibility.json').read_text())
+                self.assertEqual(report['managed_diagnostics'],option is True)
+        desktop=runner.Supervisor(dict(self.request,mode='desktop',managed_diagnostics=True))
+        self.assertFalse(desktop.status['managed_diagnostics'])
+        with self.assertRaisesRegex(ValueError,'Invalid managed diagnostics'):
+            runner.Supervisor(dict(self.request,managed_diagnostics='false'))
 
     def test_native_crash_tail_survives_verbose_log_rotation(self):
         supervisor=runner.Supervisor(self.request)
@@ -147,8 +175,8 @@ class StartupTests(unittest.TestCase):
         self.assertIn('mscoree=b',env['WINEDLLOVERRIDES'].split(';'))
         self.assertEqual(env['DOTNET_HOST_TRACE'],'1')
         self.assertEqual(env['DOTNET_HOST_TRACEFILE'],'Z:\\logs\\client-dotnet-host.log')
-        self.assertTrue(env['DOTNET_STARTUP_HOOKS'].endswith('Memento.Diagnostics.dll'))
-        self.assertEqual(env['MEMENTO_MANAGED_LOG'],'Z:\\logs\\client-managed.log')
+        self.assertNotIn('DOTNET_STARTUP_HOOKS',env)
+        self.assertNotIn('MEMENTO_MANAGED_LOG',env)
         config=json.loads((runner.CLIENT/'settings.json').read_text())
         self.assertEqual(config['ultimaonlinedirectory'],'D:\\')
         self.assertEqual(config['clientversion'],'7.0.15.1')

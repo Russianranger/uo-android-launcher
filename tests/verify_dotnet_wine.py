@@ -92,6 +92,13 @@ try:
     assert 'MEMENTO_LAYOUT_OK 1098x720 in 1280x720' in output
     print('Fixed: Windows .NET reads the repaired settings and finds the nested Memento data directory',flush=True)
     print('Verified: Windows .NET reads the 1098x720 world / 1280x720 window profile',flush=True)
+    assert 'DOTNET_STARTUP_HOOKS' not in env
+    assert not (runner.LOGS/'client-managed.log').exists()
+    print('Verified: default Wine game launch executes .NET without the managed hook',flush=True)
+    supervisor.status['managed_diagnostics']=True
+    env=supervisor.client_environment()
+    env['DOTNET_HOST_TRACEFILE']=env['COREHOST_TRACEFILE']='Z:'+str(runner.LOGS/'probe-host.log').replace('/','\\')
+    env['MEMENTO_MANAGED_LOG']='Z:'+str(runner.LOGS/'client-managed.log').replace('/','\\')
     code=run([app,'--pathfinder-throw'],env,'pathfinder-throw.log',45)
     captured=(runner.LOGS/'client-managed.log').read_text(errors='replace')
     assert code not in (0,124), (code,captured)
