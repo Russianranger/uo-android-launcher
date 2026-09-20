@@ -50,6 +50,8 @@ class StartupTests(unittest.TestCase):
 
     def test_early_clean_client_exit_is_visible_and_host_tracing_enabled(self):
         supervisor=runner.Supervisor(self.request)
+        supervisor.root=runner.SESSION
+        (supervisor.root/'Memento.Diagnostics.dll').touch()
         supervisor.run=Mock()
         display=Mock();display.poll.return_value=None
         game=Mock();game.poll.return_value=0;game.pid=123
@@ -64,6 +66,8 @@ class StartupTests(unittest.TestCase):
         self.assertIn('mscoree=b',env['WINEDLLOVERRIDES'].split(';'))
         self.assertEqual(env['DOTNET_HOST_TRACE'],'1')
         self.assertEqual(env['DOTNET_HOST_TRACEFILE'],'Z:\\logs\\client-dotnet-host.log')
+        self.assertTrue(env['DOTNET_STARTUP_HOOKS'].endswith('Memento.Diagnostics.dll'))
+        self.assertEqual(env['MEMENTO_MANAGED_LOG'],'Z:\\logs\\client-managed.log')
         config=json.loads((runner.CLIENT/'settings.json').read_text())
         self.assertEqual(config['ultimaonlinedirectory'],'D:\\')
         self.assertEqual(config['clientversion'],'7.0.15.1')
@@ -77,7 +81,7 @@ class StartupTests(unittest.TestCase):
         self.assertEqual((runner.CLIENT/'settings.json').read_text(),'{}')
 
     def test_dotnet_preflight_enables_builtin_loader_without_losing_renderer_overrides(self):
-        for renderer,dlls in (('turnip','d3d11,dxgi=n'),('software','d3d11,dxgi=b')):
+        for renderer,dlls in (('turnip','d3d11,dxgi=b'),('software','d3d11,dxgi=b')):
             with self.subTest(renderer=renderer):
                 supervisor=runner.Supervisor(dict(self.request,renderer=renderer))
                 setup=supervisor.setup_environment()
@@ -85,6 +89,26 @@ class StartupTests(unittest.TestCase):
                 self.assertIn('mscoree=',setup['WINEDLLOVERRIDES'].split(';'))
                 self.assertIn('mscoree=b',managed['WINEDLLOVERRIDES'].split(';'))
                 for env in (setup,managed):self.assertIn(dlls,env['WINEDLLOVERRIDES'].split(';'))
+                self.assertEqual(managed['FNA3D_FORCE_DRIVER'],'Vulkan' if renderer=='turnip' else 'OpenGL')
+
+    def test_layout_opt_out_and_invalid_resolution_preserve_profiles(self):
+        profile=runner.CLIENT/'Data/Profiles/default.json';profile.parent.mkdir(parents=True)
+        profile.write_text('{"game_window_size":{"X":900,"Y":600}}')
+        supervisor=runner.Supervisor(self.request)
+        supervisor.prepare_client_configuration()
+        self.assertEqual(json.loads(profile.read_text())['game_window_size'],{'X':900,'Y':600})
+        before=(runner.CLIENT/'settings.json').read_bytes()
+        supervisor.request.update(gump_space=True,resolution='800x600')
+        with self.assertRaisesRegex(ValueError,'requires a 1280x720'):supervisor.prepare_client_configuration()
+        self.assertEqual((runner.CLIENT/'settings.json').read_bytes(),before)
+
+    def test_requested_layout_and_binary_report_are_in_support_diagnostics(self):
+        supervisor=runner.Supervisor(dict(self.request,gump_space=True,renderer='turnip'))
+        supervisor.prepare_client_configuration()
+        report=json.loads((runner.LOGS/'client-config.json').read_text())
+        self.assertEqual(report['layout']['world_viewport'],[1098,720])
+        self.assertEqual(report['layout']['window'],[1280,720])
+        self.assertEqual(report['graphics_driver'],'Vulkan')
 
     def test_main_keeps_failure_in_status_after_cleanup(self):
         (runner.SESSION/'request.json').write_text(json.dumps(self.request))

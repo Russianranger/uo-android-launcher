@@ -1,23 +1,19 @@
-# UO Memento Recovery 0.1.3 — client data directory fix
+# UO Memento Recovery 0.1.4 — world viewport and Vulkan compatibility
 
-The 0.1.2 test reached TazUO's own startup checks. It could not find the data directory because the launcher wrote `ultimaonline`, while TazUO reads `ultimaonlinedirectory`. The log also showed a blank client version.
-
-- Write the correct Windows data path and repair existing imports automatically at launch.
-- Fill blank versions with Memento's documented **7.0.15.1** asset/protocol version. Preserve existing versions, credentials, plugins and other settings, and retain the original settings backup.
-- Check for `tiledata.mul`, `cliloc.enu` and `map0.mul` before opening Wine.
-- Include the resolved configuration in `client-config.json` support diagnostics, excluding saved credentials.
-- Extend the real Wine 10 / Windows .NET 10.0.8 test to reproduce the ignored-key failure and verify the repaired nested Memento data path.
+- Add **1098×720 world + gump space**, enabled by default at 1280×720. The borderless full client canvas remains **1280×720**, leaving **182 pixels on the right** for movable gumps. The world view is fixed at the top left.
+- Apply the layout to existing characters and the default profile for new characters. Preserve other settings and saved gumps, and keep a one-time `.json.before-memento-layout` backup. Turning the option off stops applying it; it does not restore previous dimensions automatically.
+- Select Vulkan explicitly for Turnip. The imported TazUO **5.2.0** treats the previous auto value as OpenGL; the supplied log confirmed llvmpipe software rendering even though Turnip was selected.
+- Add a bounded managed startup hook to capture pathfinding exception details before termination when supported, plus client package versions and asset sizes in support diagnostics.
 
 ## Update and test
 
-1. In **UO Memento Recovery**, save and close the realm runtime and stop the client.
-2. Install the 0.1.3 APK over Recovery. Do not uninstall or clear app data. CI verifies its package ID and signing certificate against the existing Recovery release.
-3. Open the realm runtime and start your existing server. No rebuild is needed.
-4. Launch TazUO using Turnip, 1280×720, Native Surface and 60 FPS. Settings repair happens automatically; no reimport or .NET preparation is needed.
-5. Export support logs after testing. Report whether you reach login, character selection and the world.
+1. Save and close the realm runtime and stop the client. Install this APK over **UO Memento Recovery** without uninstalling or clearing data. The package ID and certificate remain stable.
+2. Start your existing server. No rebuild, reimport or .NET download is needed.
+3. Select **Turnip 26 · Vulkan**, **1280×720**, **Native Surface**, **60 FPS**, with **1098×720 world + gump space** checked.
+4. Enter the world, move a gump into the right-hand strip, then test walking. If it crashes, report whether it happened while idle or during the first movement, and export support logs.
 
-The Wine/.NET regression runs on an x86-64 CI host and checks configuration and managed loading. ARM64 Box64, Adreno rendering and TazUO gameplay still need device validation.
+The supplied crash trace ends in `Pathfinder.CreateItemList` / `CalculateNewZ`, without the exception type. **This release does not claim to fix that movement crash.** The separate scripting-download DNS error was handled by TazUO and is not established as the cause. CI verifies configuration, managed loading and exception capture under Wine 10 / .NET 10.0.8; it cannot verify ARM64 Box64 gameplay or Adreno graphics.
 
-Sources: [TazUO settings schema](https://github.com/PlayTazUO/TazUO/blob/3212623f63436be1c0f4e3b308b202b29597c026/src/ClassicUO.Client/Configuration/Settings.cs), [Memento client setup](https://uo-memento.com/setup/desktop-client/#server-information).
+Sources: [TazUO 5.2 startup and renderer selection](https://github.com/PlayTazUO/TazUO/blob/73768f6653d39788b00f5bce5b2a063dc76452aa/src/ClassicUO.Client/Main.cs), [profile schema](https://github.com/PlayTazUO/TazUO/blob/73768f6653d39788b00f5bce5b2a063dc76452aa/src/ClassicUO.Client/Configuration/Profile.cs).
 
-For the original **0.1.0** app, follow the [recovery guide](https://github.com/Russianranger/uo-android-launcher/blob/main/docs/RECOVERY.md) first; its signing key differs. The included recovery helper remains available for that older migration.
+For the original 0.1.0 app, follow the [recovery guide](https://github.com/Russianranger/uo-android-launcher/blob/main/docs/RECOVERY.md) first; its signing key differs.

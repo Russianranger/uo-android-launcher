@@ -9,3 +9,5 @@ dist/
 ui-reports/
 backend-assets/
 app/src/main/jniLibs/
+**/obj/
+**/bin/

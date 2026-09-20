@@ -58,8 +58,11 @@ final class ClientRuntime {
         try{
             String mode=options.optString("mode","client"),renderer=options.optString("renderer","turnip"),resolution=options.optString("resolution","1280x720"),presentation=options.optString("presentation_mode","native_surface");
             int fps=options.optInt("display_fps",60);
+            boolean gumpSpace=options.optBoolean("gump_space",resolution.equals("1280x720"));
+            if(gumpSpace&&!resolution.equals("1280x720"))throw new IOException("The 1098x720 world viewport requires a 1280x720 display");
             if(!Arrays.asList("client","desktop").contains(mode)||!Arrays.asList("turnip","virgl","software").contains(renderer)||!Arrays.asList("800x600","1024x768","1280x720").contains(resolution)||!Arrays.asList("rfb","native_surface").contains(presentation)||(fps!=30&&fps!=60))throw new IOException("Unsupported client options");
             JSONObject request=new JSONObject().put("mode",mode).put("renderer",renderer).put("resolution",resolution).put("presentation_mode",presentation).put("display_fps",fps).put("audio",options.optBoolean("audio",true));
+            request.put("gump_space",gumpSpace);
             if(mode.equals("client")){
                 JSONObject info=json(new File(client,"memento-client.json"));
                 if(!info.optBoolean("self_contained")&&!new File(dotnet,"dotnet.exe").isFile())throw new IOException("Prepare the required .NET runtime in the Client tab first");
@@ -67,6 +70,7 @@ final class ClientRuntime {
             }
             TarExtractor.remove(run);TarExtractor.remove(tmp);run.mkdirs();tmp.mkdirs();prefix.mkdirs();client.mkdirs();dotnet.mkdirs();
             File backend=new File(server.home,"client-backend");backend.mkdirs();
+            try(InputStream in=context.getAssets().open("Memento.Diagnostics.dll")){RuntimeManager.copy(in,new File(backend,"Memento.Diagnostics.dll"));}
             for(String name:new String[]{"uo_client_runner.py","uo_content.py","client_presentation.py","client_audio.py","log_retention.py","graphics_probe.py","runtime_probe.py","x11-frame-bridge","presentation-bundle.json","libasound_module_pcm_trasc.so","audio-bundle.json","turnip-26.0.0.so","libXcomposite.so.1","dxvk-d3d11-x64.dll","dxvk-dxgi-x64.dll","dxvk-d3d11-x86.dll","dxvk-dxgi-x86.dll"})try(InputStream in=context.getAssets().open(name)){RuntimeManager.copy(in,new File(backend,name));}
             new File(backend,"x11-frame-bridge").setExecutable(true,true);
             RuntimeManager.write(new File(run,"request.json"),request.toString());

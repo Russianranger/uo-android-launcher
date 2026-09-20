@@ -70,6 +70,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: bash scripts/build-diagnostics.sh
       - run: python3 scripts/prepare-assets.py
       - uses: actions/cache@v4
         id: signing
@@ -111,7 +115,9 @@ jobs:
           "$signer" verify --print-certs app/build/outputs/apk/debug/app-debug.apk > runtime-work/update-cert.txt
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk > runtime-work/badging.txt
           grep -q "package: name='io.github.russianranger.uomemento.recovery'" runtime-work/badging.txt
-          grep -q "versionCode='4'" runtime-work/badging.txt
+          unzip -l app/build/outputs/apk/debug/app-debug.apk > runtime-work/apk-files.txt
+          grep -q assets/Memento.Diagnostics.dll runtime-work/apk-files.txt
+          grep -q "versionCode='5'" runtime-work/badging.txt
       - name: Keep the recovery certificate stable after its first release
         if: github.ref == 'refs/heads/main' && steps.anchor.outputs.exists == 'true'
         env:
@@ -150,14 +156,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.1.3-Recovery.apk
+          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.1.4-Recovery.apk
           mv dist/runtime-work/downloads/runtime-bridges.zip dist/runtime-bridges.zip
           curl -fL --retry 3 https://github.com/Russianranger/uo-android-launcher/releases/download/v0.1.0/runtime-corresponding-sources.tar.gz -o dist/runtime-corresponding-sources.tar.gz
           echo '492043660b1370e1910c8b8ca2b93be1f637f4929034f575591f14e67e015243  dist/runtime-corresponding-sources.tar.gz' | sha256sum --check
           cp scripts/recover-preview.py dist/recover-preview.py
-          git archive --format=zip --output=dist/UO-Memento-0.1.3-source.zip HEAD
-          (cd dist && sha256sum UO-Memento-0.1.3-Recovery.apk UO-Memento-0.1.3-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
-          if ! gh release view v0.1.3 >/dev/null 2>&1; then
-            gh release create v0.1.3 --target "$GITHUB_SHA" --prerelease --title 'UO Memento 0.1.3 — client data directory fix' --notes-file docs/RELEASE-NOTES.md
+          git archive --format=zip --output=dist/UO-Memento-0.1.4-source.zip HEAD
+          (cd dist && sha256sum UO-Memento-0.1.4-Recovery.apk UO-Memento-0.1.4-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
+          if ! gh release view v0.1.4 >/dev/null 2>&1; then
+            gh release create v0.1.4 --target "$GITHUB_SHA" --prerelease --title 'UO Memento 0.1.4 — world viewport and Vulkan compatibility' --notes-file docs/RELEASE-NOTES.md
           fi
-          gh release upload v0.1.3 dist/UO-Memento-0.1.3-Recovery.apk dist/UO-Memento-0.1.3-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py --clobber
+          gh release upload v0.1.4 dist/UO-Memento-0.1.4-Recovery.apk dist/UO-Memento-0.1.4-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py --clobber
