@@ -131,6 +131,15 @@ def local_client_settings(root, metadata):
     write_json(path, settings)
 
 
+def renderer_settings(root, metadata, renderer):
+    # TazUO's Main.cs overrides FNA3D_FORCE_DRIVER for force_driver 0/1/2.
+    # Auto mode (3) preserves our explicit D3D11 selection for DXVK.
+    path = confined(root, metadata['settings'])
+    settings = json.loads(path.read_text(encoding='utf-8-sig'))
+    settings['force_driver'] = 3 if renderer == 'turnip' else 1
+    write_json(path, settings)
+
+
 def swap_directory(staging, live):
     """Recoverable directory replacement. Keep the previous copy for rollback."""
     staging, live = Path(staging), Path(live)

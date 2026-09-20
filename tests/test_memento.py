@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
-from uo_content import extract_zip, inspect_client, local_client_settings, swap_directory
+from uo_content import extract_zip, inspect_client, local_client_settings, swap_directory, renderer_settings
 from engine import Engine
 
 
@@ -31,6 +31,8 @@ class ImportTests(unittest.TestCase):
             local_client_settings(root,info)
             saved=json.loads(settings.read_text());self.assertEqual(saved['ip'],'127.0.0.1');self.assertEqual(saved['ultimaonline'],'D:\\Game files');self.assertEqual(saved['clientversion'],'7.0.99.1');self.assertEqual(saved['password'],'retained');self.assertEqual(saved['plugins'],['custom.dll'])
             self.assertTrue(settings.with_suffix('.json.before-memento').exists())
+            renderer_settings(root,info,'turnip');self.assertEqual(json.loads(settings.read_text())['force_driver'],3)
+            renderer_settings(root,info,'virgl');self.assertEqual(json.loads(settings.read_text())['force_driver'],1)
 
     def test_x86_detected_and_missing_assets_rejected(self):
         with tempfile.TemporaryDirectory() as d:

@@ -10,7 +10,7 @@ import threading
 import time
 import client_audio
 import client_presentation
-from uo_content import confined, write_json
+from uo_content import confined, write_json, renderer_settings
 
 SESSION=Path('/session')
 PREFIX=Path('/prefix')
@@ -135,6 +135,7 @@ class Supervisor:
         else:
             info=request['client'];exe=confined(CLIENT,info['executable'])
             if not exe.is_file():raise ValueError('Imported client executable is missing')
+            renderer_settings(CLIENT,info,request['renderer'])
             if not info['self_contained']:
                 installed=json.loads(Path('/dotnet/memento-dotnet.json').read_text())
                 if installed['architecture']!=info['architecture'] or installed['version'].split('.')[:2]!=info['dotnet_version'].split('.')[:2]:
