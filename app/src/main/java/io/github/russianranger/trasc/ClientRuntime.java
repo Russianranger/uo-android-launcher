@@ -67,7 +67,7 @@ final class ClientRuntime {
             }
             TarExtractor.remove(run);TarExtractor.remove(tmp);run.mkdirs();tmp.mkdirs();prefix.mkdirs();client.mkdirs();dotnet.mkdirs();
             File backend=new File(server.home,"client-backend");backend.mkdirs();
-            for(String name:new String[]{"uo_client_runner.py","uo_content.py","client_presentation.py","client_audio.py","log_retention.py","graphics_probe.py","runtime_probe.py","x11-frame-bridge","presentation-bundle.json","libasound_module_pcm_trasc.so","audio-bundle.json","turnip-26.0.0.so","dxvk-d3d11-x64.dll","dxvk-dxgi-x64.dll","dxvk-d3d11-x86.dll","dxvk-dxgi-x86.dll"})try(InputStream in=context.getAssets().open(name)){RuntimeManager.copy(in,new File(backend,name));}
+            for(String name:new String[]{"uo_client_runner.py","uo_content.py","client_presentation.py","client_audio.py","log_retention.py","graphics_probe.py","runtime_probe.py","x11-frame-bridge","presentation-bundle.json","libasound_module_pcm_trasc.so","audio-bundle.json","turnip-26.0.0.so","libXcomposite.so.1","dxvk-d3d11-x64.dll","dxvk-dxgi-x64.dll","dxvk-d3d11-x86.dll","dxvk-dxgi-x86.dll"})try(InputStream in=context.getAssets().open(name)){RuntimeManager.copy(in,new File(backend,name));}
             new File(backend,"x11-frame-bridge").setExecutable(true,true);
             RuntimeManager.write(new File(run,"request.json"),request.toString());
             RuntimeManager.write(new File(root,"etc/hosts"),"127.0.0.1 localhost\n::1 localhost\n");
@@ -81,7 +81,25 @@ final class ClientRuntime {
             LogRetention.rotate(new File(logs,"client-proot.log"));builder.redirectErrorStream(true);builder.redirectOutput(new File(logs,"client-proot.log"));process=builder.start();status="Starting TazUO display and Wine…";
             RuntimeManager.write(new File(server.work,"client/launch-options.json"),request.toString());
             final Process owned=process;final GraphicsBridge gpu=graphics;final AudioBridge sound=audio;
-            new Thread(()->{try{owned.waitFor();}catch(InterruptedException e){Thread.currentThread().interrupt();}finally{if(gpu!=null)try{gpu.stop();}catch(Exception ignored){}if(sound!=null)sound.close();}},"memento-client-monitor").start();
+            new Thread(()->{
+                try{
+                    int code=owned.waitFor();
+                    synchronized(ClientRuntime.this){
+                        if(process==owned){
+                            File report=new File(run,"status.json");JSONObject launch=new JSONObject();
+                            if(report.isFile())try{launch=json(report);}catch(Exception ignored){}
+                            launch.put("supervisor_exit_code",code).put("display_ready",false);
+                            if(code!=0&&!launch.has("error"))launch.put("phase","error").put("error","Client runtime exited with code "+code+". Export support logs from the Journal.");
+                            if(!launch.has("error"))launch.put("phase","stopped");
+                            status=launch.optString("error","Client stopped");
+                            RuntimeManager.write(report,launch.toString());
+                            RuntimeManager.write(new File(logs,"client-state.json"),launch.toString());
+                        }
+                    }
+                }catch(InterruptedException e){Thread.currentThread().interrupt();}
+                catch(Exception e){server.recordFailure("client_process_exit",e);}
+                finally{if(gpu!=null)try{gpu.stop();}catch(Exception ignored){}if(sound!=null)sound.close();}
+            },"memento-client-monitor").start();
             return state();
         }catch(Exception e){if(graphics!=null)graphics.stop();if(audio!=null)audio.close();status=e.getMessage();throw e;}finally{busy=false;}
     }

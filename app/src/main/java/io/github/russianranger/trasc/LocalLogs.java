@@ -19,8 +19,11 @@ final class LocalLogs {
     static boolean clientDiagnostic(String name) {
         String lower=name.toLowerCase(Locale.ROOT);
         if(lower.equals("dinput8.log")||lower.equals("dbg.txt"))return true;
-        if(!lower.startsWith("logs/"))return false;
-        return Arrays.asList("dbg.txt","dbg.log","uierrors.txt","crash.log").contains(lower.substring(5));
+        // TazUO can be nested inside the import and timestamps its crash reports.
+        int logs=lower.lastIndexOf("/logs/");
+        String leaf=lower.startsWith("logs/")?lower.substring(5):logs>=0?lower.substring(logs+6):"";
+        return Arrays.asList("dbg.txt","dbg.log","uierrors.txt","crash.log","crash.txt").contains(leaf)
+                ||leaf.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}_crash\\.txt");
     }
 
     static void addClientLog(Map<String,Path> files,Path root,Path path)throws IOException {
@@ -33,7 +36,14 @@ final class LocalLogs {
 
     // Check every parent as well as the leaf. Never follow server/ or logs/ links.
     static Path checked(Path work,String relative)throws IOException {
-        Path path=TarExtractor.path(work.toFile(),relative).toPath(),current=work;
+        // Keep Context's lexical path throughout. Canonicalizing just the child
+        // mixes /data/user/0 and /data/data and makes relativize() invent "..".
+        work=work.toAbsolutePath().normalize();
+        if(relative.startsWith("/")||relative.contains("\\")||relative.indexOf('\0')>=0)
+            throw new IOException("Unsafe log path");
+        for(String part:relative.split("/"))if(part.equals(".."))throw new IOException("Unsafe log path");
+        Path path=work.resolve(relative).normalize(),current=work;
+        if(!path.startsWith(work))throw new IOException("Log path escapes workspace");
         if(Files.isSymbolicLink(work))throw new IOException("Log workspace cannot be a symlink");
         for(Path part:work.relativize(path)) {
             current=current.resolve(part);
@@ -66,15 +76,17 @@ final class LocalLogs {
         Path client;
         try{client=checked(work.toPath(),"client/current");}catch(IOException unsafe){return files;}
         if(Files.isDirectory(client,LinkOption.NOFOLLOW_LINKS)) {
-            try(DirectoryStream<Path> children=Files.newDirectoryStream(client)) {
-                for(Path child:children) {
-                    addClientLog(files,client,child);
-                    if(child.getFileName().toString().equalsIgnoreCase("logs")&&Files.isDirectory(child,LinkOption.NOFOLLOW_LINKS))
-                        try(DirectoryStream<Path> logs=Files.newDirectoryStream(child)) {
-                            for(Path log:logs)addClientLog(files,client,log);
-                        }
+            Files.walkFileTree(client,EnumSet.noneOf(FileVisitOption.class),16,new SimpleFileVisitor<Path>() {
+                int visited;
+                @Override public FileVisitResult visitFile(Path path,BasicFileAttributes attrs)throws IOException {
+                    if(++visited>250000)return FileVisitResult.TERMINATE;
+                    if(attrs.isRegularFile())addClientLog(files,client,path);
+                    return FileVisitResult.CONTINUE;
                 }
-            }
+                @Override public FileVisitResult visitFileFailed(Path path,IOException error) {
+                    return FileVisitResult.CONTINUE; // Optional imported-client diagnostics.
+                }
+            });
         }
         return files;
     }
@@ -105,7 +117,7 @@ final class LocalLogs {
             try(ZipOutputStream zip=new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(partial)))) {
                 zip.setLevel(1);
                 for(Path file:inventory(work).values()) {
-                    String name=work.toPath().relativize(file).toString();
+                    String name=work.toPath().toAbsolutePath().normalize().relativize(file).toString();
                     checked(work.toPath(),name);
                     SeekableByteChannel opened;
                     try{opened=Files.newByteChannel(file,StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS);}
