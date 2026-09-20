@@ -30,7 +30,9 @@ class StartupTests(unittest.TestCase):
         supervisor=runner.Supervisor(self.request);supervisor.run=Mock()
         supervisor.prepare_prefix()
         self.assertEqual(supervisor.run.call_args_list[0].args[0][-1],'-u')
-        self.assertIn('mscoree',supervisor.env['WINEDLLOVERRIDES'].split('=')[0].split(','))
+        boot_env=supervisor.run.call_args_list[0].kwargs['env']
+        self.assertIn('mscoree=',boot_env['WINEDLLOVERRIDES'].split(';'))
+        self.assertIn('mscoree=b',supervisor.env['WINEDLLOVERRIDES'].split(';'))
         supervisor.run.reset_mock();supervisor.prepare_prefix()
         self.assertEqual(supervisor.run.call_args_list[0].args[0][-1],'-i')
         supervisor.run.side_effect=[None,RuntimeError('Wine check failed')]
@@ -58,8 +60,19 @@ class StartupTests(unittest.TestCase):
                 supervisor.start()
         self.assertEqual(supervisor.status['exit_code'],0)
         env=supervisor.spawn.call_args.kwargs['env']
+        self.assertIn('mscoree=b',env['WINEDLLOVERRIDES'].split(';'))
         self.assertEqual(env['DOTNET_HOST_TRACE'],'1')
         self.assertEqual(env['DOTNET_HOST_TRACEFILE'],'Z:\\logs\\client-dotnet-host.log')
+
+    def test_dotnet_preflight_enables_builtin_loader_without_losing_renderer_overrides(self):
+        for renderer,dlls in (('turnip','d3d11,dxgi=n'),('software','d3d11,dxgi=b')):
+            with self.subTest(renderer=renderer):
+                supervisor=runner.Supervisor(dict(self.request,renderer=renderer))
+                setup=supervisor.setup_environment()
+                managed=supervisor.dotnet_environment('client-dotnet-check-host.log')
+                self.assertIn('mscoree=',setup['WINEDLLOVERRIDES'].split(';'))
+                self.assertIn('mscoree=b',managed['WINEDLLOVERRIDES'].split(';'))
+                for env in (setup,managed):self.assertIn(dlls,env['WINEDLLOVERRIDES'].split(';'))
 
     def test_main_keeps_failure_in_status_after_cleanup(self):
         (runner.SESSION/'request.json').write_text(json.dumps(self.request))

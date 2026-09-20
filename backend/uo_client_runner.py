@@ -33,9 +33,9 @@ class Supervisor:
         self.root=Path(__file__).parent
         self.status={'phase':'starting','resolution':request['resolution'],'display_target_fps':request['display_fps']}
         self.env=dict(os.environ,DISPLAY=':8',XAUTHORITY='/session/Xauthority',WINEPREFIX='/prefix',WINEARCH='win64',
-                      # Modern .NET uses hostfxr/CoreCLR, not Wine's .NET Framework shim.
-                      # Disabling mscoree also suppresses Wine's Mono download during wineboot.
-                      WINEDEBUG='-all,err+all',WINEDLLOVERRIDES='winemenubuilder,mscoree,mshtml=',
+                      # Wine's IL-only DLL loader requires mscoree even with modern
+                      # CoreCLR. Disable it only in the wineboot child environment.
+                      WINEDEBUG='-all,err+all',WINEDLLOVERRIDES='winemenubuilder,mshtml=;mscoree=b',
                       BOX64_DYNAREC_STRONGMEM='1',BOX64_DYNAREC_BIGBLOCK='0',BOX64_DYNAREC_SAFEFLAGS='2',
                       BOX64_DYNAREC_MISSING='0',BOX64_PATH='/opt/wine/bin',BOX64_LOG='1',
                       BOX64_LD_LIBRARY_PATH='/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:/opt/wine/lib/wine/x86_64-unix',
@@ -102,9 +102,14 @@ class Supervisor:
                and (PREFIX/'system.reg').is_file() and (PREFIX/'drive_c/windows/system32/kernel32.dll').is_file())
         marker.unlink(missing_ok=True)
         self.update('preparing_wine',display_ready=True,prefix_update='reuse' if ready else 'repair')
-        self.run(WINE+['wineboot','-i' if ready else '-u'],timeout=240)
+        self.run(WINE+['wineboot','-i' if ready else '-u'],timeout=240,env=self.setup_environment())
         self.run(WINE+['cmd','/d','/c','exit','0'],log='client-wine-check.log',timeout=60)
         marker.write_text(PREFIX_REVISION)
+
+    def setup_environment(self):
+        # Suppress wineboot's Mono installer without disabling the managed DLL
+        # loader in the subsequent .NET preflight, TazUO or Wine desktop process.
+        return dict(self.env,WINEDLLOVERRIDES=self.env['WINEDLLOVERRIDES'].replace('mscoree=b','mscoree='))
 
     def dotnet_environment(self,log):
         from log_retention import rotate
