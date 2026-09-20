@@ -3,16 +3,17 @@ const $=id=>document.getElementById(id),pending=new Map();let sequence=0,polling
 function call(operation,args={}){return new Promise((resolve,reject)=>{const id=String(++sequence);pending.set(id,{resolve,reject});if(window.Memento)Memento.call(id,operation,JSON.stringify(args));else{pending.delete(id);reject(new Error('Open this screen inside UO Memento.'));}});}
 window.nativeReply=(id,value)=>{const p=pending.get(id);if(!p)return;pending.delete(id);value.ok?p.resolve(value.result):p.reject(new Error(value.error));};
 function notice(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);}
-function options(mode='client'){return{mode,renderer:$('renderer').value,resolution:$('resolution').value,presentation_mode:$('presentation').value,display_fps:Number($('fps').value),audio:$('audio').checked,gump_space:$('gump-space').checked,client_memory_compatibility:$('memory-compatibility').checked,managed_diagnostics:$('managed-diagnostics').checked,sdl_graphics_fixes:$('sdl-graphics-fixes').checked};}
+function options(mode='client'){return{mode,renderer:$('renderer').value,resolution:$('resolution').value,presentation_mode:$('presentation').value,display_fps:Number($('fps').value),audio:$('audio').checked,gump_space:$('gump-space').checked,client_memory_compatibility:$('memory-compatibility').checked,managed_diagnostics:$('managed-diagnostics').checked,render_trace:$('render-trace').checked,sdl_graphics_fixes:$('sdl-graphics-fixes').checked};}
 function saveOptions(){localStorage.setItem('launch',JSON.stringify(options()));}
 try{const v=JSON.parse(localStorage.getItem('launch')||'{}');for(const [key,id]of[['renderer','renderer'],['resolution','resolution'],['presentation_mode','presentation'],['display_fps','fps']])if(v[key])$(id).value=v[key];if(typeof v.audio==='boolean')$('audio').checked=v.audio;}catch(_){}
 try{const v=JSON.parse(localStorage.getItem('launch')||'{}');$('gump-space').checked=$('resolution').value==='1280x720'&&v.gump_space!==false;}catch(_){}
 try{const v=JSON.parse(localStorage.getItem('launch')||'{}');$('memory-compatibility').checked=v.client_memory_compatibility===true;}catch(_){}
+try{const v=JSON.parse(localStorage.getItem('launch')||'{}');$('render-trace').checked=v.render_trace===true;}catch(_){}
 try{const v=JSON.parse(localStorage.getItem('launch')||'{}');$('managed-diagnostics').checked=v.managed_diagnostics===true;}catch(_){}
 try{const v=JSON.parse(localStorage.getItem('launch')||'{}');$('sdl-graphics-fixes').checked=v.sdl_graphics_fixes!==false;}catch(_){}
 $('gump-space').addEventListener('change',()=>{if($('gump-space').checked)$('resolution').value='1280x720';saveOptions();});
 $('resolution').addEventListener('change',()=>{if($('resolution').value!=='1280x720')$('gump-space').checked=false;saveOptions();});
-for(const id of['renderer','presentation','fps','audio','sdl-graphics-fixes','memory-compatibility','managed-diagnostics'])$(id).addEventListener('change',saveOptions);
+for(const id of['renderer','presentation','fps','audio','sdl-graphics-fixes','memory-compatibility','render-trace','managed-diagnostics'])$(id).addEventListener('change',saveOptions);
 document.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{currentTab=button.dataset.tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id===currentTab));document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('selected',b===button));if(currentTab==='journal')readLog().catch(e=>notice(e.message,true));}));
 async function exportFile(path){await call('export',{path});notice('File exported.');}
 async function readLog(){const r=await call('logs',{name:$('log-name').value});const selected=$('log-name').value;$('log-name').replaceChildren();for(const name of r.names){const o=document.createElement('option');o.textContent=name;$('log-name').append(o);}if(r.names.includes(selected))$('log-name').value=selected;$('log-text').textContent=r.text||'No log output yet.';}
@@ -39,6 +40,8 @@ async function refresh(){
         [nativeState,clientState]=await Promise.all([call('native_state'),call('client_native_state')]);
         $('runtime-status').textContent=nativeState.status;$('storage').textContent=(nativeState.free_bytes/1073741824).toFixed(1)+' GB free';
         $('client-status').textContent=clientState.launch?.error||(clientState.alive?(clientState.launch?.phase||clientState.status):clientState.status);
+        const trace=clientState.launch?.render_trace;
+        $('render-trace-status').textContent=!trace?'':trace.active?'Last launch: render crash tracing active.':trace.action==='restored_original'?'Last launch: original client DLL restored.':trace.requested?'Last launch: tracing unavailable for this client build.':'Last launch: render tracing off.';
         const graphics=clientState.launch?.sdl_graphics;
         $('sdl-graphics-status').textContent=!graphics?'':graphics.active_version==='3.4.16'?'Last launch: SDL 3.4.16 active.':graphics.action==='restored_original'?'Last launch: original graphics library restored.':graphics.action==='unchanged_unrecognized_libraries'?'Last launch: this client’s graphics libraries were left as imported.':'Last launch: original graphics library active.';
         if(nativeState.alive){

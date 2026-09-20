@@ -4,7 +4,8 @@ package io.github.russianranger.trasc;
 final class ClientRuntimeAssets {
     private ClientRuntimeAssets() {}
     static final String[] FILES={
-        "Memento.Diagnostics.dll",
+        "Memento.Diagnostics.dll", "Memento.RenderTrace.dll",
+        "client_render_trace.py", "tazuo-5.2-render-trace.patch.b64",
         "uo_client_runner.py", "uo_content.py", "client_presentation.py",
         "client_audio.py", "client_health.py", "client_graphics.py", "log_retention.py",
         "graphics_probe.py", "runtime_probe.py",
