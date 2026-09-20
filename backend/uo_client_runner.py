@@ -9,6 +9,7 @@ import threading
 import time
 import client_audio
 import client_presentation
+from client_health import ClientHealth
 from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, client_binary_report
 
 SESSION=Path('/session')
@@ -54,6 +55,13 @@ class Supervisor:
         compatibility=request.get('client_memory_compatibility',False)
         if not isinstance(compatibility,bool):raise ValueError('Invalid memory compatibility option')
         self.status['memory_compatibility']=compatibility and request.get('mode','client')=='client'
+        diagnostics=request.get('managed_diagnostics',False)
+        if not isinstance(diagnostics,bool):raise ValueError('Invalid managed diagnostics option')
+        self.status['managed_diagnostics']=diagnostics and request.get('mode','client')=='client'
+        # Do not inherit an injected startup hook into Wine setup or a normal
+        # game launch. Detailed in-process instrumentation is now opt-in.
+        self.env.pop('DOTNET_STARTUP_HOOKS',None)
+        self.env.pop('MEMENTO_MANAGED_LOG',None)
         renderer=request['renderer']
         if renderer=='turnip':
             write_json(SESSION/'turnip-icd.json',{'file_format_version':'1.0.0','ICD':{'library_path':str(self.root/'turnip-26.0.0.so'),'api_version':'1.3.0'}})
@@ -153,12 +161,13 @@ class Supervisor:
         env=self.dotnet_environment('client-dotnet-host.log')
         if self.status['memory_compatibility']:
             env.update(BOX64_DYNAREC_STRONGMEM='3',BOX64_DYNAREC_WEAKBARRIER='0')
-        hook=self.root/'Memento.Diagnostics.dll'
-        if not hook.is_file():raise RuntimeError('Client diagnostics component is missing; reinstall the current APK')
-        from log_retention import rotate
-        rotate(LOGS/'client-managed.log')
-        env.update(DOTNET_STARTUP_HOOKS='Z:'+str(hook).replace('/','\\'),
-                   MEMENTO_MANAGED_LOG='Z:\\logs\\client-managed.log')
+        if self.status['managed_diagnostics']:
+            hook=self.root/'Memento.Diagnostics.dll'
+            if not hook.is_file():raise RuntimeError('Client diagnostics component is missing; reinstall the current APK')
+            from log_retention import rotate
+            rotate(LOGS/'client-managed.log')
+            env.update(DOTNET_STARTUP_HOOKS='Z:'+str(hook).replace('/','\\'),
+                       MEMENTO_MANAGED_LOG='Z:\\logs\\client-managed.log')
         # Wine handles SIGSEGV before managed observers see fatal native faults.
         # Print Box64 fault PCs/registers, plus Wine's loaded module bases for
         # address attribution. Avoid rolling-call traces and native stack walks
@@ -166,6 +175,8 @@ class Supervisor:
         env.update(BOX64_SHOWSEGV='1',BOX64_SHOWBT='0',WINEDEBUG='-all,err+all,trace+loaddll')
         write_json(LOGS/'client-compatibility.json',{
             'memory_compatibility':self.status.get('memory_compatibility',False),
+            'managed_diagnostics':self.status['managed_diagnostics'],
+            'external_health_log':'client-health.log',
             'scope':'game_launch_only',
             'attempt_started_utc':self.status['attempt_started_utc'],
             'environment':{key:env[key] for key in (
@@ -182,7 +193,7 @@ class Supervisor:
         # If Wine setup fails, an earlier gameplay crash must not appear as this
         # attempt's current output. Preserve it in the normal bounded history.
         from log_retention import rotate
-        for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json'):
+        for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json','client-health.log'):
             path=LOGS/name
             rotate(path)
             path.unlink(missing_ok=True)
@@ -234,6 +245,7 @@ class Supervisor:
             cwd=exe.parent
         env=self.client_environment() if request['mode']=='client' else self.env
         game=self.spawn(launch,'client-wine.log',cwd=cwd,env=env)
+        health=ClientHealth(game.pid,LOGS)
         started=time.monotonic()
         self.update('client_running' if request['mode']=='client' else 'wine_desktop',renderer_requested=request['renderer'],
                     compatibility='Device validation required',launcher_pid=game.pid,client_started=request['mode']=='client')
@@ -246,6 +258,7 @@ class Supervisor:
                 if request['mode']=='client' and time.monotonic()-started<15:
                     raise RuntimeError('TazUO closed during startup (exit code 0). Export support logs from the Journal.')
                 break
+            health.sample()
             time.sleep(.5)
 
     def stop(self):
