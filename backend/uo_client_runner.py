@@ -45,6 +45,15 @@ class Supervisor:
         # eight-core handheld. Keep the conservative flags and real CPU count.
         (SESSION/'box64.rc').write_text('[wine]\nBOX64_MAXCPU=0\n[wine64]\nBOX64_MAXCPU=0\n'
                                        '[explorer.exe]\nBOX64_DYNAREC_BIGBLOCK=0\n')
+        # The latest failure is a native CoreCLR access violation, not the
+        # earlier managed render-list exception. Test stricter x86 memory
+        # ordering without changing the imported client or its JIT/GC policy.
+        compatibility=request.get('memory_compatibility',True)
+        if not isinstance(compatibility,bool):raise ValueError('Invalid memory compatibility option')
+        if request.get('mode','client')=='client':
+            self.env.update(BOX64_DYNAREC_STRONGMEM='3' if compatibility else '1',
+                            BOX64_DYNAREC_WEAKBARRIER='0' if compatibility else '1')
+            self.status['memory_compatibility']=compatibility
         renderer=request['renderer']
         if renderer=='turnip':
             write_json(SESSION/'turnip-icd.json',{'file_format_version':'1.0.0','ICD':{'library_path':str(self.root/'turnip-26.0.0.so'),'api_version':'1.3.0'}})
@@ -142,6 +151,18 @@ class Supervisor:
         rotate(LOGS/'client-managed.log')
         env.update(DOTNET_STARTUP_HOOKS='Z:'+str(hook).replace('/','\\'),
                    MEMENTO_MANAGED_LOG='Z:\\logs\\client-managed.log')
+        # Wine handles SIGSEGV before managed observers see fatal native faults.
+        # Print Box64 fault PCs/registers, plus Wine's loaded module bases for
+        # address attribution. Avoid rolling-call traces and native stack walks
+        # on every handled fault. The normal 8 MiB log rotation still applies.
+        env.update(BOX64_SHOWSEGV='1',BOX64_SHOWBT='0',WINEDEBUG='-all,err+all,trace+loaddll')
+        write_json(LOGS/'client-compatibility.json',{
+            'memory_compatibility':self.status.get('memory_compatibility',False),
+            'environment':{key:env[key] for key in (
+                'BOX64_DYNAREC_STRONGMEM','BOX64_DYNAREC_WEAKBARRIER','BOX64_DYNAREC_BIGBLOCK',
+                'BOX64_DYNAREC_SAFEFLAGS','BOX64_SHOWSEGV','BOX64_SHOWBT','WINEDEBUG')},
+            'validation':'Experimental mitigation; native crash cause not established',
+        })
         return env
 
     def start(self):

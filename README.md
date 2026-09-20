@@ -1,14 +1,18 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.1.5
+## Updating Recovery to 0.1.6
 
-Save and close the realm runtime, stop the client, then install the 0.1.5 APK over **UO Memento Recovery**. Keep app data; no server rebuild, client reimport, .NET download or migration is needed. CI checks the existing signing certificate.
+Save and close the realm runtime, stop the client, then install the 0.1.6 APK over **UO Memento Recovery**. Keep app data; no server rebuild, client reimport, .NET download or migration is needed. CI checks the existing signing certificate.
 
 **1098×720 world + gump space** is enabled by default at **1280×720**. It sets a fixed borderless world viewport on the left and leaves **182 pixels** on the right for gumps. Existing and new character profiles receive the layout; other settings and saved gumps are preserved. Original profiles are backed up once beside each JSON as `.json.before-memento-layout`. Turn this option off to manage the layout within TazUO; turning it off does not restore the old layout automatically.
 
 Use **Turnip / Vulkan / 1280×720 / Native Surface / 60 FPS**. Version 0.1.5 fixes a startup race that opened the display before Native Surface and relative input were ready. In the 0.1.4 test this silently left the display on RFB. Check **Native Surface** in the gear menu after upgrading.
 
-The new crash log identifies `InvalidOperation_EnumFailedVersion` in TazUO 5.2.0's render list. Its underlying cause is still under investigation. This update reduces exception-tracing overhead and adds bounded FNA graphics logs plus the client's own FPS counter, focus state and scene. Export **Journal → Export support logs** after a 15-minute movement test, even if stable. CI verifies startup readiness and diagnostics; device performance and crash stability still require testing.
+The 0.1.5 test confirmed Native Surface was active and reported better FPS, but TazUO terminated after 594 seconds with a native `0xC0000005` access violation. No managed exception was recorded; the older render-list crash report in the ZIP belongs to the previous session.
+
+Version 0.1.6 adds **Memory compatibility (experimental)** under Client → Display & sound, enabled for existing and new installations. It tests stricter Box64 memory ordering (`STRONGMEM=3`, `WEAKBARRIER=0`). Turn it off and restart the client to compare with 0.1.5's ordering (`1` / `1`). This is a reversible mitigation, **not a confirmed crash fix**, and may reduce FPS. The imported client, .NET JIT/GC policy, rendering and world layout remain intact.
+
+Native fault addresses/registers and Wine module bases now accompany the bounded support logs. The ten-second FPS samples also include managed memory and GC counts without forcing collections. Test for 20 minutes with Memory compatibility on, then export **Journal → Export support logs**, even if stable. See the release notes for validation limits.
 
 ## 0.1.1 recovery build
 
@@ -16,7 +20,7 @@ The original preview's signing key was not saved by CI, so 0.1.1 installs separa
 
 Use the [recovery guide](docs/RECOVERY.md) to copy your complete installation with the supplied ADB tool, or export the world from the old Saves tab and set up the recovery app separately. The tool can also export the old logs without using the broken export button.
 
-After migration, retry **Client → Launch TazUO** and export a support ZIP from the Journal. On-device .NET 10 gameplay remains unverified.
+After migration, retry **Client → Launch TazUO** and export a support ZIP from the Journal. World entry is now verified on the Thor; longer-session stability is still under investigation.
 
 
 A standalone ARM64 Android launcher for **Ultima Memento + the imported Windows TazUO client**, with a gold UO shield and a retro fantasy interface.
@@ -32,7 +36,7 @@ A standalone ARM64 Android launcher for **Ultima Memento + the imported Windows 
 7. Log in, enter the world, move, open inventory, test targeting and audio. LT cycles the four initial layers and displays the active layer at the top. Map your TazUO macros to the chosen keys. Do not enable conflicting native controller bindings in TazUO.
 8. Log out, use **Save & stop**, restart the server and confirm the character and items persist. Create and export a world backup. Use **Journal → Export support logs** to report any issue.
 
-This is an initial device-test preview. Android compilation, automated input/import/backup checks and CI server compilation are distinct from a successful Thor game session. TazUO .NET 10 under Wine/Box64 still requires device verification; a working TRASC RoF2 session does not prove that newer CoreCLR and TazUO will work. VirGL/OpenGL and software rendering are comparison paths. The app does not invoke installed Winlator or Termux.
+This is an initial device-test preview. Android compilation, automated input/import/backup checks and CI server compilation are distinct from a successful Thor game session. TazUO .NET 10 world entry works on the Thor, but longer sessions have crashed and still require device validation. VirGL/OpenGL and software rendering are comparison paths. The app does not invoke installed Winlator or Termux.
 
 ## Controller methodology
 

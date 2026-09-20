@@ -86,7 +86,8 @@ internal static class StartupHook
             object fps = Member(assembly.GetType("ClassicUO.CUOEnviroment"), "CurrentRefreshRate");
             object scene = Member(game, "Scene");
             Write("CLIENT SAMPLE fps=" + fps + " active=" + Member(game, "IsActive") +
-                  " scene=" + scene?.GetType().Name);
+                  " scene=" + scene?.GetType().Name + " managed_bytes=" + GC.GetTotalMemory(false) +
+                  " gc_collections=" + GC.CollectionCount(0) + "/" + GC.CollectionCount(1) + "/" + GC.CollectionCount(2));
         }
         catch { }
     }

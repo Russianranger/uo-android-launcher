@@ -13,6 +13,17 @@ public static class ManagedProbe
     {
         Assembly runtime=Assembly.LoadFrom(Path.Combine(AppContext.BaseDirectory,"System.Runtime.dll"));
         Console.WriteLine("MEMENTO_MANAGED_OK " + RuntimeInformation.FrameworkDescription + " " + runtime.GetName().Name);
+        if (args.Length > 0 && args[0] == "--native-fault")
+        {
+            // Deliberate access violation inside native code. This verifies the
+            // diagnostic path, not a reproduction of the unknown TazUO defect.
+            IntPtr page=VirtualAlloc(IntPtr.Zero,(UIntPtr)4096,0x3000,0x01);
+            if(page==IntPtr.Zero) return 6;
+            Console.WriteLine("MEMENTO_NATIVE_FAULT_PROBE");
+            Console.Out.Flush();
+            memset(page,42,(UIntPtr)4096);
+            return 7;
+        }
         if (args.Length > 0 && args[0] == "--pathfinder-throw")
         {
             // Simulate a client handler terminating before later unhandled
@@ -62,6 +73,11 @@ public static class ManagedProbe
         }
         return 0;
     }
+
+    [DllImport("kernel32.dll", SetLastError=true)]
+    private static extern IntPtr VirtualAlloc(IntPtr address,UIntPtr size,uint allocation,uint protection);
+    [DllImport("msvcrt.dll", CallingConvention=CallingConvention.Cdecl)]
+    private static extern IntPtr memset(IntPtr target,int value,UIntPtr size);
 }
 
 namespace ClassicUO.Game

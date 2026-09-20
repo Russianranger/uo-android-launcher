@@ -109,5 +109,12 @@ try:
     assert code==0, (runner.LOGS/'graphics-probe.log').read_text(errors='replace')
     assert 'FNA LogInfo: FNA3D Driver: probe-renderer' in captured, captured
     assert 'CLIENT SAMPLE fps=47 active=True scene=GameScene' in captured, captured
+    assert 'managed_bytes=' in captured and 'gc_collections=' in captured, captured
     print('Verified: graphics logging preserves existing handlers and samples cached client FPS',flush=True)
+    code=run([app,'--native-fault'],env,'native-fault.log',45)
+    output=(runner.LOGS/'native-fault.log').read_text(errors='replace')
+    assert code not in (0,6,7,124), (code,output[-8000:])
+    assert 'MEMENTO_NATIVE_FAULT_PROBE' in output and 'c0000005' in output.lower(), output[-8000:]
+    assert 'trace:loaddll:' in output and 'coreclr.dll' in output.lower(), output[-8000:]
+    print('Verified: real native access violation terminates and retains Wine module attribution output',flush=True)
 finally:stop()
