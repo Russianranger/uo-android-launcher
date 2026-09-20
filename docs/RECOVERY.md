@@ -28,7 +28,7 @@ This retains the downloaded runtimes, imported client, .NET, server, world saves
    python3 recover-preview.py migrate
    ```
 
-   Type `SAVED` when asked, after completing step 2. The tool closes both apps, makes `uo-memento-installation-backup.tar.gz` on the computer, checks the compressed backup, then copies its contents into the fresh recovery app. It never uninstalls or clears the original app, and refuses to overwrite a configured recovery installation or an existing backup file. Keep this backup private: it contains your world, client settings and any saved credentials.
+   Type `SAVED` when asked, after completing step 2. The tool closes both apps, makes `uo-memento-installation-backup.tar.gz` on the computer, checks the compressed backup, then copies its contents into the fresh recovery app. Temporary sockets and session commands are excluded and recreated on launch. It never uninstalls or clears the original app, and refuses to overwrite a configured recovery installation or an existing backup file. Keep this backup private: it contains your world, client settings and any saved credentials.
 
 7. Open **UO Memento Recovery**, then **Realm → Open runtime**. Existing installation files should be available. Start the server and retry **Client → Launch TazUO**. The first launch repairs Wine setup once; later launches reuse it.
 8. Use **Journal → Export support logs** after the attempt. Keep the original app and computer backup until the recovered world and client are verified.
@@ -37,7 +37,7 @@ If the copy fails, the original installation and any completed computer backup r
 
 ## Set up without a computer
 
-In the original app, save and stop the world, then use **Saves → Back up world** and export that world ZIP. Install the recovery APK separately, prepare its runtimes, import your original client folder/ZIP, and pull/compile the server. Restore the world ZIP through the recovery app's Saves tab while its server is stopped. This requires downloading the runtimes and importing the client again.
+In the original app, save and stop the world, then use **Saves → Create world backup** and export that world ZIP. Install the recovery APK separately, prepare its runtimes, import your original client folder/ZIP, and pull/compile the server. Restore the world ZIP through the recovery app's Saves tab while its server is stopped. This requires downloading the runtimes and importing the client again.
 
 Only run one app's runtime/server/client at a time: both use the same localhost ports. Closing the old app's screen alone does not stop its foreground server service.
 

@@ -17,6 +17,13 @@ ORIGINAL='io.github.russianranger.uomemento'
 RECOVERY=ORIGINAL+'.recovery'
 
 
+def archive_args(relative):
+    # Closed X11/input processes can leave socket files behind. They are not
+    # portable state; the launcher recreates these directories on its next run.
+    excludes=['--exclude=files/tmp','--exclude=files/work/run'] if relative=='files' else []
+    return ['tar']+excludes+['-cf','-',relative]
+
+
 class Adb:
     def __init__(self,executable='adb',serial=None):
         self.base=[executable]+(['-s',serial] if serial else [])
@@ -27,7 +34,7 @@ class Adb:
         return result.stdout
 
     def archive_command(self,package,relative):
-        return self.base+['exec-out','run-as',package,'tar','-cf','-',relative]
+        return self.base+['exec-out','run-as',package]+archive_args(relative)
 
     def restore_command(self):
         return self.base+['shell','-T','run-as',RECOVERY,'tar','-xf','-']

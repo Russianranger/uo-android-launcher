@@ -2,6 +2,9 @@ import gzip
 import importlib.util
 from pathlib import Path
 import sys
+import shutil
+import socket
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import Mock,patch
@@ -11,6 +14,24 @@ recovery=importlib.util.module_from_spec(spec);spec.loader.exec_module(recovery)
 
 
 class RecoveryTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('tar') and hasattr(socket,'AF_UNIX'),'Needs host tar and Unix sockets')
+    def test_migration_archive_omits_stale_sockets_but_keeps_world(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'files/tmp').mkdir(parents=True)
+            (root/'files/work/run').mkdir(parents=True)
+            (root/'files/work/server/Saves').mkdir(parents=True)
+            (root/'files/work/server/Saves/world.bin').write_bytes(b'saved world')
+            (root/'files/work/run/api-token').write_text('expired session')
+            try:sock=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+            except PermissionError:self.skipTest('This host disallows Unix sockets; CI exercises this case')
+            with sock:
+                sock.bind(str(root/'files/tmp/frames.sock'))
+                adb=Mock();adb.archive_command.return_value=['tar','-C',d]+recovery.archive_args('files')[1:]
+                target=recovery.capture(adb,'files',root/'backup.tar.gz')
+            with tarfile.open(target) as archive:
+                self.assertEqual(archive.extractfile('files/work/server/Saves/world.bin').read(),b'saved world')
+                self.assertFalse(any(n.startswith(('files/tmp','files/work/run')) for n in archive.getnames()))
+
     def test_capture_retains_bytes_and_refuses_overwriting_backup(self):
         with tempfile.TemporaryDirectory() as d:
             target=Path(d)/'logs.tar.gz';adb=Mock()
