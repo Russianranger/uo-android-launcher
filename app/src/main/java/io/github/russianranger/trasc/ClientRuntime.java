@@ -76,6 +76,7 @@ final class ClientRuntime {
             request.put("gump_space",gumpSpace);
             request.put("client_memory_compatibility",options.optBoolean("client_memory_compatibility",false));
             request.put("managed_diagnostics",options.optBoolean("managed_diagnostics",false));
+            request.put("sdl_graphics_fixes",options.optBoolean("sdl_graphics_fixes",true));
             if(mode.equals("client")){
                 JSONObject info=json(new File(client,"memento-client.json"));
                 if(!info.optBoolean("self_contained")&&!new File(dotnet,"dotnet.exe").isFile())throw new IOException("Prepare the required .NET runtime in the Client tab first");

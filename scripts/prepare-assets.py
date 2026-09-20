@@ -3,6 +3,7 @@ from pathlib import Path
 import hashlib
 import io
 import subprocess
+import sys
 import tarfile
 import urllib.error
 import urllib.request
@@ -11,6 +12,7 @@ import zipfile
 ROOT=Path(__file__).resolve().parents[1]
 CACHE=ROOT/'runtime-work/downloads'
 CACHE.mkdir(parents=True,exist_ok=True)
+subprocess.run([sys.executable,str(ROOT/'scripts/prepare-sdl.py')],check=True)
 
 def fetch(name,urls,digest):
     path=CACHE/name

@@ -9,6 +9,7 @@ import threading
 import time
 import client_audio
 import client_presentation
+import client_graphics
 from client_health import ClientHealth
 from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, client_binary_report
 
@@ -150,6 +151,11 @@ class Supervisor:
             raise ValueError('Imported client executable is missing')
         # Repair existing imports on APK upgrade, before opening the display.
         report=local_client_settings(CLIENT,info)
+        graphics_fixes=self.request.get('sdl_graphics_fixes',True)
+        if not isinstance(graphics_fixes,bool):raise ValueError('Invalid SDL graphics fixes option')
+        report['sdl_graphics']=client_graphics.prepare(CLIENT,info,self.root,
+            graphics_fixes and self.request['renderer']=='turnip')
+        self.update(sdl_graphics=report['sdl_graphics'])
         renderer_settings(CLIENT,info,self.request['renderer'])
         report['graphics_driver']='Vulkan' if self.request['renderer']=='turnip' else 'OpenGL'
         if self.request.get('gump_space',False):
