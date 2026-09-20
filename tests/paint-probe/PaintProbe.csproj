@@ -6,6 +6,7 @@
     <RuntimeFrameworkVersion>10.0.8</RuntimeFrameworkVersion>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="FNA"><HintPath>../../runtime-work/fna-paint/fna-build/FNA.dll</HintPath></Reference>
