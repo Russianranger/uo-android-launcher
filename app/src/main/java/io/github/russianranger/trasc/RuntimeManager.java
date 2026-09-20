@@ -66,7 +66,8 @@ final class RuntimeManager {
     JSONObject nativeState()throws Exception{return new JSONObject().put("installed",installed()).put("alive",alive()).put("installing",installing).put("status",status).put("free_bytes",home.getUsableSpace()).put("version",BuildConfig.VERSION_NAME);}
     JSONObject logs(String name)throws Exception{return new JSONObject().put("text",LocalLogs.tail(work,name)).put("names",new JSONArray(LocalLogs.inventory(work).keySet()));}
     JSONObject exportLogs()throws Exception {
-        AndroidExitDiagnostics.collect(context,work);
+        try{AndroidExitDiagnostics.collect(context,work);}
+        catch(Exception unavailable){recordFailure("android_exit_diagnostics",unavailable);}
         File file=LocalLogs.export(work,new JSONObject().put("version",BuildConfig.VERSION_NAME).put("device",android.os.Build.MODEL).put("runtime",nativeState()).put("client",ClientRuntime.get(context).state()).toString(2));
         return new JSONObject().put("file","exports/"+file.getName());
     }

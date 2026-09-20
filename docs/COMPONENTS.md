@@ -10,3 +10,9 @@
 - Icon: created with built-in Image Generation for this app. Prompt: “retro 16-bit fantasy pixel-art heraldic shield with large gold UO letters, burgundy face, gold beveled metal rim, dark background, no other text.” Full-resolution original: `artwork/uo-shield.png`.
 
 The first release is a compatibility preview. The inherited Wine/Box64 execution path has not been replaced with Winlator's FEX/ARM64EC runtime. Logs distinguish startup failure from a successful client process; Android/host CI cannot validate Adreno acceleration or a Memento login on the Thor.
+
+## 0.1.1 runtime overlay
+
+- XComposite: Debian Bookworm `libxcomposite1` ARM64, version `1:0.4.5-1`, from `https://deb.debian.org/debian/pool/main/libx/libxcomposite/libxcomposite1_0.4.5-1_arm64.deb`. SHA-256: `cfe39326fdb822e9d060ed5eb3f95b14459dd6b73793c5290000f9b27f8bad37`.
+- Only `libXcomposite.so.1.0.0` is copied into the APK as `libXcomposite.so.1`; its Debian copyright/license file is included as `libXcomposite-COPYRIGHT` in the APK assets. The library uses the MIT/X11 license. Source package: `https://deb.debian.org/debian/pool/main/libx/libxcomposite/`.
+- The overlay is loaded from `/opt/uo-client` with `LD_LIBRARY_PATH`; the installed runtime archive and package database are unchanged.

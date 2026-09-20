@@ -2,6 +2,7 @@
 from pathlib import Path
 import hashlib
 import io
+import subprocess
 import tarfile
 import urllib.error
 import urllib.request
@@ -43,4 +44,12 @@ with tarfile.open(dxvk) as archive:
         for dll in ['d3d11','dxgi']:
             target=ROOT/'backend-assets'/f'dxvk-{dll}-{arch}.dll'
             target.write_bytes(archive.extractfile(f'dxvk-2.7.1/{folder}/{dll}.dll').read())
-print('Verified and prepared Android runtime bridges, Turnip 26 and DXVK 2.7.1')
+# The original client rootfs omitted this Wine X11 dependency. Ship a small
+# verified overlay so upgrading the APK repairs existing/offline installations.
+xcomposite=fetch('libxcomposite1_0.4.5-1_arm64.deb',[
+    'https://deb.debian.org/debian/pool/main/libx/libxcomposite/libxcomposite1_0.4.5-1_arm64.deb'],
+    'cfe39326fdb822e9d060ed5eb3f95b14459dd6b73793c5290000f9b27f8bad37')
+with tarfile.open(fileobj=io.BytesIO(subprocess.check_output(['dpkg-deb','--fsys-tarfile',str(xcomposite)]))) as archive:
+    (ROOT/'backend-assets/libXcomposite.so.1').write_bytes(archive.extractfile('./usr/lib/aarch64-linux-gnu/libXcomposite.so.1.0.0').read())
+    (ROOT/'backend-assets/libXcomposite-COPYRIGHT').write_bytes(archive.extractfile('./usr/share/doc/libxcomposite1/copyright').read())
+print('Verified and prepared Android runtime bridges, Turnip 26, DXVK 2.7.1 and XComposite')

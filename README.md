@@ -1,5 +1,11 @@
 # UO Memento for Android
 
+## Updating from 0.1.0
+
+Save and stop the server, then install the 0.1.1 APK over the existing app. Keep app data: do not uninstall. The update repairs log export, suppresses Wine's Mono installer and supplies the missing XComposite library automatically. Existing runtimes, client files, .NET and world saves are reused.
+
+Export the previous attempt's logs from **Journal → Export support logs**, then retry **Client → Launch TazUO**. If it exits, export another support ZIP. It now includes .NET host traces and TazUO's timestamped crash reports even when the client is in a subfolder. On-device .NET 10 gameplay remains unverified.
+
 A standalone ARM64 Android launcher for **Ultima Memento + the imported Windows TazUO client**, with a gold UO shield and a retro fantasy interface.
 
 ## First test on the AYN Thor
