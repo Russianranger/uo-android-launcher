@@ -1,0 +1,21 @@
+diff --git a/src/tracee/event.c b/src/tracee/event.c
+index df953ee..f106b80 100644
+--- a/src/tracee/event.c
++++ b/src/tracee/event.c
+@@ -20,6 +20,7 @@
+  * 02110-1301 USA.
+  */
+ 
++#include <stdio.h>      /* fprintf(3), stderr */
+ #include <sched.h>      /* CLONE_*,  */
+ #include <sys/types.h>  /* pid_t, */
+ #include <sys/ptrace.h> /* ptrace(1), PTRACE_*, */
+@@ -662,6 +663,8 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
+ 				tracee->seccomp = ENABLED;
+ 				seccomp_detected = true;
+ 				seccomp_after_ptrace_enter = !IS_IN_SYSENTER(tracee);
++				if (getenv("TRASC_PROOT_REPORT") != NULL)
++					fprintf(stderr, "TRASC PRoot: seccomp acceleration observed\n");
+ 				VERBOSE(tracee, 1, "ptrace acceleration (seccomp mode 2, %s syscall order) enabled",
+ 						seccomp_after_ptrace_enter ? "new" : "old");
+ 			}

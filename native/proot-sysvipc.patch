@@ -1,0 +1,39 @@
+--- a/src/extension/sysvipc/sysvipc_shm.c
++++ b/src/extension/sysvipc/sysvipc_shm.c
+@@ -17,6 +17,7 @@
+ #include <sys/stat.h> /* S_IR */
+ #include <sys/mman.h> /* MAP_SHARED */
+ #include <syscall.h> /* syscall() */
++#include <linux/memfd.h> /* MFD_CLOEXEC */
+ #include <string.h> /* memset */
+ #include <time.h> /* time */
+ #include <fcntl.h> /* open, fcntl */
+@@ -772,6 +773,20 @@
+ }
+ 
+ static int sysvipc_shm_do_allocate(size_t size, int shmid) {
++/* Modern Android no longer exposes /dev/ashmem. Use the same memfd path
++ * on the Linux test runner so real MIT-SHM tests exercise this allocation. */
++#ifdef __NR_memfd_create
++	int memory_fd = syscall(__NR_memfd_create, "proot-sysvshm", MFD_CLOEXEC);
++	if (memory_fd >= 0) {
++		if (ftruncate(memory_fd, size) == 0) {
++			fprintf(stderr, "TRASC PRoot: SysV shared memory uses memfd\n");
++			return memory_fd;
++		}
++		int error = errno;
++		close(memory_fd);
++		return -error;
++	}
++#endif
+ #ifdef __ANDROID__
+ 	int fd = open("/dev/ashmem", O_RDWR, 0);
+ 	if (fd < 0) return -ENOSPC;
+@@ -796,6 +811,7 @@
+ 	if (fd < 0) return -ENOSPC;
+ 
+ 	if (ftruncate(fd, size) == -1) {
++		close(fd);
+ 		return -ENOSPC;
+ 	}
+ 

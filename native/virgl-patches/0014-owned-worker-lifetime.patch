@@ -1,0 +1,24 @@
+--- a/vtest/vtest_server.c
++++ b/vtest/vtest_server.c
+@@ -28,6 +28,7 @@
+ 
+ #include <stdio.h>
+ #include <signal.h>
++#include <sys/prctl.h>
+ #include <stdbool.h>
+ #include <unistd.h>
+ #include <stdlib.h>
+@@ -545,10 +546,13 @@
+ 
+ static pid_t vtest_server_fork(void)
+ {
++   pid_t parent = getpid();
+    pid_t pid = fork();
+ 
+    if (pid == 0) {
+       /* child */
++      if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != parent)
++         _exit(1);
+       vtest_server_set_signal_segv();
+       vtest_server_close_socket();
+       server.main_server = false;

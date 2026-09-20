@@ -1,0 +1,37 @@
+const { chromium } = require('playwright');
+const fs = require('fs');
+const path = require('path');
+(async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ const page=await browser.newPage({viewport:{width:1280,height:850},deviceScaleFactor:1});
+ const errors=[];page.on('pageerror',e=>errors.push(String(e)));
+ await page.route('https://app.memento.local/**',async route=>{
+  const filename=path.basename(new URL(route.request().url()).pathname)||'index.html';
+  const types={'.html':'text/html','.js':'application/javascript','.css':'text/css','.png':'image/png'};
+  await route.fulfill({contentType:types[path.extname(filename)],body:fs.readFileSync(path.join(__dirname,'../app/src/main/assets/ui',filename))});
+ });
+ await page.addInitScript(()=>{
+  window.calls=[];window.Memento={call(id,op,args){window.calls.push({op,args:JSON.parse(args)});let result={};
+   if(op==='native_state')result={alive:true,installed:true,status:'Realm runtime ready',free_bytes:24*1073741824};
+   if(op==='client_native_state')result={alive:false,installed:true,status:'TazUO is ready to launch.'};
+   if(op==='state')result={running:false,build:{revision:'916d1ec666376ef44366c986befa3200deb93eb0',ref:'main'},client:{executable:'Client/TazUO.exe',architecture:'x64',dotnet_version:'10.0.0'},jobs:[]};
+   if(op==='logs')result={text:'Memento: ready\n',names:['runtime.log','server.log']};
+   setTimeout(()=>window.nativeReply(id,{ok:true,result}),0);
+  }};
+ });
+ await page.goto('https://app.memento.local/index.html');await page.waitForTimeout(200);
+ fs.mkdirSync('ui-reports',{recursive:true});
+ await page.screenshot({path:'ui-reports/realm-landscape.png',fullPage:true});
+ await page.locator('[data-tab="client"]').click();
+ await page.locator('[data-action="controller_open"]').click();
+ if(!await page.evaluate(()=>window.calls.some(c=>c.op==='controller_open')))throw Error('Controller action not connected');
+ await page.screenshot({path:'ui-reports/client-landscape.png',fullPage:true});
+ await page.setViewportSize({width:412,height:915});await page.screenshot({path:'ui-reports/client-phone.png',fullPage:true});
+ for(const tab of ['realm','client','saves','journal']){
+  await page.locator(`[data-tab="${tab}"]`).click();
+  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error(tab+' overflows narrow viewport');
+ }
+ if(errors.length)throw Error(errors.join('\n'));
+ console.log('Four tabs, native controller action, phone/landscape layouts passed');
+ await browser.close();
+})().catch(e=>{console.error(e);process.exit(1)});

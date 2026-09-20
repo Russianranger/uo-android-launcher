@@ -1,0 +1,17 @@
+From: TRASC Android project
+Subject: [PATCH] server: allow translated Unix process cleanup to finish
+
+Wine marks the Windows process exited before Box64/PRoot finish Unix cleanup.
+A kernel trace on ARM64 identifies wineserver's ~0.5s timer as the SIGKILL
+sender after the Windows fixture called exit(0). Allow approximately 8s,
+covering Box64's existing 5s native-exit watchdog, while retaining the bounded
+SIGKILL fallback. Windows exit codes, process handles and running-game behavior
+are unchanged. TRASC's owned Stop still has its independent forced cleanup.
+
+--- a/server/process.c
++++ b/server/process.c
+@@ -615,3 +615,3 @@
+     process->sigkill_delay *= 2;
+-    if (process->sigkill_delay >= TICKS_PER_SEC / 2)
++    if (process->sigkill_delay >= TICKS_PER_SEC * 8)
+         signal = SIGKILL;
