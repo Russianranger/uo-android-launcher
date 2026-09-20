@@ -74,7 +74,7 @@ final class ClientRuntime {
             if(!Arrays.asList("client","desktop").contains(mode)||!Arrays.asList("turnip","virgl","software").contains(renderer)||!Arrays.asList("800x600","1024x768","1280x720").contains(resolution)||!Arrays.asList("rfb","native_surface").contains(presentation)||(fps!=30&&fps!=60))throw new IOException("Unsupported client options");
             JSONObject request=new JSONObject().put("mode",mode).put("renderer",renderer).put("resolution",resolution).put("presentation_mode",presentation).put("display_fps",fps).put("audio",options.optBoolean("audio",true));
             request.put("gump_space",gumpSpace);
-            request.put("memory_compatibility",options.optBoolean("memory_compatibility",true));
+            request.put("client_memory_compatibility",options.optBoolean("client_memory_compatibility",false));
             if(mode.equals("client")){
                 JSONObject info=json(new File(client,"memento-client.json"));
                 if(!info.optBoolean("self_contained")&&!new File(dotnet,"dotnet.exe").isFile())throw new IOException("Prepare the required .NET runtime in the Client tab first");

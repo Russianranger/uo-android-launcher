@@ -48,10 +48,10 @@ class StartupTests(unittest.TestCase):
         for thread in supervisor.threads:thread.join(timeout=2)
         self.assertIn('hostfxr failed',(runner.LOGS/'client-dotnet.log').read_text())
 
-    def test_memory_compatibility_default_opt_out_and_setup_scope(self):
-        for choice,strong,weak in ((None,'3','0'),(True,'3','0'),(False,'1','1')):
-            request=dict(self.request)
-            if choice is not None:request['memory_compatibility']=choice
+    def test_memory_compatibility_defaults_off_and_never_leaks_into_setup(self):
+        for choice,strong,weak in ((None,'1','1'),(True,'3','0'),(False,'1','1')):
+            request=dict(self.request,memory_compatibility=True) # stale 0.1.6 opt-in
+            if choice is not None:request['client_memory_compatibility']=choice
             with self.subTest(choice=choice):
                 supervisor=runner.Supervisor(request)
                 supervisor.root=runner.SESSION
@@ -65,15 +65,56 @@ class StartupTests(unittest.TestCase):
                 self.assertIn('trace+loaddll',env['WINEDEBUG'])
                 self.assertNotIn('BOX64_SHOWSEGV',supervisor.setup_environment())
                 self.assertNotIn('trace+loaddll',supervisor.setup_environment()['WINEDEBUG'])
+                for baseline in (supervisor.env,supervisor.setup_environment(),
+                                 supervisor.dotnet_environment('client-dotnet-check-host.log')):
+                    self.assertEqual(baseline['BOX64_DYNAREC_STRONGMEM'],'1')
+                    self.assertEqual(baseline['BOX64_DYNAREC_WEAKBARRIER'],'1')
+                # Even after constructing the experimental game environment,
+                # actual wineboot and cmd preflight calls must use the baseline.
+                supervisor.run=Mock()
+                supervisor.prepare_prefix()
+                for command in supervisor.run.call_args_list:
+                    effective=command.kwargs.get('env') or supervisor.env
+                    self.assertEqual(effective['BOX64_DYNAREC_STRONGMEM'],'1')
+                    self.assertEqual(effective['BOX64_DYNAREC_WEAKBARRIER'],'1')
                 self.assertIn('mscoree=b',env['WINEDLLOVERRIDES'].split(';'))
                 report=json.loads((runner.LOGS/'client-compatibility.json').read_text())
-                self.assertEqual(report['memory_compatibility'],choice is not False)
+                self.assertEqual(report['memory_compatibility'],choice is True)
+                self.assertEqual(report['scope'],'game_launch_only')
                 self.assertEqual(report['environment']['BOX64_DYNAREC_STRONGMEM'],strong)
                 self.assertNotIn('DOTNET_TieredCompilation',env)
-        desktop=runner.Supervisor(dict(self.request,mode='desktop'))
+        desktop=runner.Supervisor(dict(self.request,mode='desktop',client_memory_compatibility=True))
         self.assertEqual(desktop.env['BOX64_DYNAREC_STRONGMEM'],'1')
+        self.assertFalse(desktop.status['memory_compatibility'])
         with self.assertRaisesRegex(ValueError,'Invalid memory compatibility'):
-            runner.Supervisor(dict(self.request,memory_compatibility='false'))
+            runner.Supervisor(dict(self.request,client_memory_compatibility='false'))
+
+    def test_setup_kill_does_not_relabel_old_game_crash_as_current(self):
+        for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json'):
+            (runner.LOGS/name).write_text('previous game crash')
+        supervisor=runner.Supervisor(dict(self.request,client_memory_compatibility=True))
+        display=Mock();display.poll.return_value=None
+        killed=Mock();killed.poll.return_value=-9;killed.returncode=-9
+        supervisor.spawn=Mock(side_effect=[display,killed])
+        (runner.SESSION/'display.sock').touch()
+        real_run=supervisor.run
+        def run(args,**kwargs):
+            if 'wineboot' in args:return real_run(args,**kwargs)
+        supervisor.run=Mock(side_effect=run)
+        with patch.object(runner.subprocess,'run'),patch.object(runner.client_presentation,'start',return_value={}),\
+             patch.object(runner.client_presentation,'start_input',return_value={}):
+            with self.assertRaisesRegex(RuntimeError,'SIGKILL.*before the client started'):
+                supervisor.start()
+        state=json.loads((runner.LOGS/'client-state.json').read_text())
+        self.assertFalse(state['client_started'])
+        self.assertEqual(state['setup_exit_code'],-9)
+        self.assertEqual(state['setup_log'],'client-prefix.log')
+        self.assertTrue(state['attempt_started_utc'].endswith('Z'))
+        self.assertEqual(supervisor.spawn.call_count,2) # display and wineboot, no game
+        for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json'):
+            self.assertFalse((runner.LOGS/name).exists())
+            from log_retention import history
+            self.assertEqual(history(runner.LOGS/name,1).read_text(),'previous game crash')
 
     def test_native_crash_tail_survives_verbose_log_rotation(self):
         supervisor=runner.Supervisor(self.request)
@@ -101,6 +142,7 @@ class StartupTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'closed during startup'):
                 supervisor.start()
         self.assertEqual(supervisor.status['exit_code'],0)
+        self.assertTrue(supervisor.status['client_started'])
         env=supervisor.spawn.call_args.kwargs['env']
         self.assertIn('mscoree=b',env['WINEDLLOVERRIDES'].split(';'))
         self.assertEqual(env['DOTNET_HOST_TRACE'],'1')
