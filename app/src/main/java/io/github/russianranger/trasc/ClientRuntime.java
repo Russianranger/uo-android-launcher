@@ -27,7 +27,18 @@ final class ClientRuntime {
     File frameSocket(){return new File(run,"frames.sock");}
     File displaySocket(){return new File(run,"display.sock");}
     static JSONObject json(File f)throws Exception{if(f.length()>131072)throw new IOException("Metadata exceeds limits");return new JSONObject(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8));}
-    JSONObject state()throws Exception{JSONObject out=new JSONObject().put("installed",installed()).put("alive",alive()).put("busy",busy).put("status",status).put("display_ready",alive()&&displaySocket().exists());File f=new File(run,"status.json");if(f.isFile())try{out.put("launch",json(f));}catch(Exception ignored){}File options=new File(server.work,"client/launch-options.json");if(options.isFile())out.put("launch_options",json(options));return out;}
+    JSONObject state()throws Exception{
+        boolean running=alive();
+        JSONObject out=new JSONObject().put("installed",installed()).put("alive",running).put("busy",busy).put("status",status).put("display_ready",false);
+        File f=new File(run,"status.json");
+        if(f.isFile())try{
+            JSONObject launch=json(f);out.put("launch",launch);
+            out.put("display_ready",ClientReadiness.ready(running,launch.optBoolean("display_ready"),launch.has("error"),
+                displaySocket().exists(),launch.optString("presentation_active"),frameSocket().exists(),
+                launch.optString("pointer_transport"),new File(run,"input.sock").exists()));
+        }catch(Exception ignored){}
+        File options=new File(server.work,"client/launch-options.json");if(options.isFile())out.put("launch_options",json(options));return out;
+    }
     synchronized JSONObject installOnline()throws Exception{
         if(alive()||busy)throw new IOException("Stop the client and finish its current task first");busy=true;
         File archive=new File(context.getCacheDir(),"client-runtime.tar.gz"),manifest=new File(context.getCacheDir(),"client-runtime-manifest.json");

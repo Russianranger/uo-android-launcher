@@ -20,6 +20,19 @@ public static class ManagedProbe
             AppDomain.CurrentDomain.UnhandledException += (_, e) => Environment.FailFast("probe termination");
             ClassicUO.Game.Pathfinder.CreateItemList();
         }
+        if (args.Length > 0 && args[0] == "--render-throw")
+            ClassicUO.Game.Scenes.GameScene.DrawRenderList();
+        if (args.Length > 0 && args[0] == "--graphics-probe")
+        {
+            Assembly fna=Assembly.LoadFrom(Path.Combine(AppContext.BaseDirectory,"FNA.dll"));
+            Type logger=fna.GetType("Microsoft.Xna.Framework.FNALoggerEXT");
+            ((Action<string>)logger.GetField("LogInfo").GetValue(null))("FNA3D Driver: probe-renderer");
+            if ((int)logger.GetField("OriginalCalls").GetValue(null)!=1) return 5;
+            Assembly.LoadFrom(Path.Combine(AppContext.BaseDirectory,"TazUO.dll"));
+            System.Threading.Thread.Sleep(11000);
+            Console.WriteLine("MEMENTO_GRAPHICS_PROBE_OK");
+            return 0;
+        }
         if (args.Length > 0)
         {
             // TazUO's JSON property names and Main.Boot directory/file checks:
@@ -60,6 +73,19 @@ namespace ClassicUO.Game
         {
             int[] data=Array.Empty<int>();
             Console.WriteLine(data[0]);
+        }
+    }
+}
+
+namespace ClassicUO.Game.Scenes
+{
+    internal static class GameScene
+    {
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        public static void DrawRenderList()
+        {
+            var list=new System.Collections.Generic.List<int>{1,2};
+            foreach(int item in list) list.Add(3);
         }
     }
 }

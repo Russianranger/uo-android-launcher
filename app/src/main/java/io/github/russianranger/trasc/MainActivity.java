@@ -66,7 +66,7 @@ public final class MainActivity extends Activity {
                     case "client_runtime_online":service();result=client.installOnline();break;
                     case "client_start":service();result=client.start(args);break;
                     case "client_stop":client.stop();result=client.state();break;
-                    case "client_view":if(!client.alive()||!client.displaySocket().exists())throw new IOException("Launch the client and wait for the display first");runOnUiThread(()->startActivity(new Intent(MainActivity.this,ClientActivity.class)));result=new JSONObject();break;
+                    case "client_view":if(!client.state().optBoolean("display_ready"))throw new IOException("Wait for the client display and controls to finish preparing");runOnUiThread(()->startActivity(new Intent(MainActivity.this,ClientActivity.class)));result=new JSONObject();break;
                     case "controller_open":runOnUiThread(()->{controller.reload();new ControllerDialog(MainActivity.this,controller,()->{}).show();reply(id,new JSONObject(),null);});return;
                     case "logs":result=runtime.logs(args.optString("name","runtime.log"));break;
                     case "export_logs":result=runtime.exportLogs();break;
