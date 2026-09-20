@@ -42,10 +42,14 @@ internal static class StartupHook
         inspecting = true;
         try
         {
-            string stack = args.Exception.StackTrace;
-            if (stack == null || !stack.Contains("ClassicUO.Game.Pathfinder")) return;
+            // At first chance, the exception's own stack can still be empty.
+            // Capture the throwing thread while it is still in Pathfinder.
+            string stack = args.Exception.StackTrace ?? "";
+            if (!stack.Contains("ClassicUO.Game.Pathfinder"))
+                stack = new System.Diagnostics.StackTrace(1, false).ToString();
+            if (!stack.Contains("ClassicUO.Game.Pathfinder")) return;
             if (Interlocked.Increment(ref movementExceptions) <= 16)
-                Write("PATHFINDER FIRST CHANCE\n" + args.Exception);
+                Write("PATHFINDER FIRST CHANCE\n" + args.Exception + "\nThrowing thread:\n" + stack);
         }
         catch { }
         finally { inspecting = false; }

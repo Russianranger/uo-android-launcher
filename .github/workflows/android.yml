@@ -21,6 +21,13 @@ jobs:
       - run: python3 -m unittest discover -s tests -v
       - run: bash scripts/check-input.sh
       - run: bash scripts/check-logs.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify launcher layout options in Chromium
+        run: |
+          npm install --prefix runtime-work/ui --ignore-scripts --no-audit --no-fund playwright@1.62.1
+          NODE_PATH="$PWD/runtime-work/ui/node_modules" CHROME_PATH=/usr/bin/google-chrome node tests/ui.cjs
       - name: Compile the real Memento server and game scripts
         run: |
           sudo apt-get update -qq
