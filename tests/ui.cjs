@@ -25,6 +25,14 @@ const path = require('path');
  await page.locator('[data-tab="client"]').click();
  await page.locator('[data-action="controller_open"]').click();
  if(!await page.evaluate(()=>window.calls.some(c=>c.op==='controller_open')))throw Error('Controller action not connected');
+ if(!await page.locator('#gump-space').isChecked())throw Error('Requested world layout must default on');
+ await page.locator('#resolution').selectOption('800x600');
+ if(await page.locator('#gump-space').isChecked())throw Error('Other resolutions must opt out of fixed layout');
+ await page.locator('#gump-space').check();
+ if(await page.locator('#resolution').inputValue()!=='1280x720')throw Error('Gump space must select full 1280 canvas');
+ await page.reload();await page.locator('[data-tab="client"]').click();
+ if(!await page.locator('#gump-space').isChecked())throw Error('Layout selection did not persist');
+ if(!await page.evaluate(()=>JSON.parse(localStorage.getItem('launch')).gump_space))throw Error('Launch option missing');
  await page.screenshot({path:'ui-reports/client-landscape.png',fullPage:true});
  await page.setViewportSize({width:412,height:915});await page.screenshot({path:'ui-reports/client-phone.png',fullPage:true});
  for(const tab of ['realm','client','saves','journal']){

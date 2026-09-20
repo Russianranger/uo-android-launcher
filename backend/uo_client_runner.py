@@ -3,14 +3,13 @@ import json
 import os
 from pathlib import Path
 import secrets
-import shutil
 import signal
 import subprocess
 import threading
 import time
 import client_audio
 import client_presentation
-from uo_content import confined, write_json, local_client_settings, renderer_settings
+from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, client_binary_report
 
 SESSION=Path('/session')
 PREFIX=Path('/prefix')
@@ -50,9 +49,9 @@ class Supervisor:
         if renderer=='turnip':
             write_json(SESSION/'turnip-icd.json',{'file_format_version':'1.0.0','ICD':{'library_path':str(self.root/'turnip-26.0.0.so'),'api_version':'1.3.0'}})
             self.env.update(VK_ICD_FILENAMES='/session/turnip-icd.json',VK_DRIVER_FILES='/session/turnip-icd.json',
-                            MESA_VK_WSI_DEBUG='sw',DXVK_LOG_LEVEL='info',DXVK_LOG_PATH='/logs',DXVK_HUD='devinfo,fps,compiler',
-                            FNA3D_FORCE_DRIVER='D3D11',SDL_AUDIODRIVER='directsound')
-            self.env['WINEDLLOVERRIDES']+=';d3d11,dxgi=n'
+                            MESA_VK_WSI_DEBUG='sw',
+                            FNA3D_FORCE_DRIVER='Vulkan',SDL_AUDIODRIVER='directsound')
+            self.env['WINEDLLOVERRIDES']+=';d3d11,dxgi=b'
         else:
             self.env.update(LIBGL_ALWAYS_SOFTWARE='1',GALLIUM_DRIVER='virpipe' if renderer=='virgl' else 'llvmpipe',
                             FNA3D_FORCE_DRIVER='OpenGL',LP_NUM_THREADS='4',SDL_AUDIODRIVER='directsound')
@@ -121,13 +120,29 @@ class Supervisor:
 
     def prepare_client_configuration(self):
         self.update('checking_client')
+        if self.request.get('gump_space',False) and self.request['resolution']!='1280x720':
+            raise ValueError('The 1098x720 world viewport requires a 1280x720 display')
         info=self.request['client']
         if not confined(CLIENT,info['executable']).is_file():
             raise ValueError('Imported client executable is missing')
         # Repair existing imports on APK upgrade, before opening the display.
         report=local_client_settings(CLIENT,info)
         renderer_settings(CLIENT,info,self.request['renderer'])
+        report['graphics_driver']='Vulkan' if self.request['renderer']=='turnip' else 'OpenGL'
+        if self.request.get('gump_space',False):
+            report['layout']=viewport_settings(CLIENT,info)
+        report['client_binary']=client_binary_report(CLIENT,info)
         write_json(LOGS/'client-config.json',report)
+
+    def client_environment(self):
+        env=self.dotnet_environment('client-dotnet-host.log')
+        hook=self.root/'Memento.Diagnostics.dll'
+        if not hook.is_file():raise RuntimeError('Client diagnostics component is missing; reinstall the current APK')
+        from log_retention import rotate
+        rotate(LOGS/'client-managed.log')
+        env.update(DOTNET_STARTUP_HOOKS='Z:'+str(hook).replace('/','\\'),
+                   MEMENTO_MANAGED_LOG='Z:\\logs\\client-managed.log')
+        return env
 
     def start(self):
         request=self.request
@@ -160,14 +175,6 @@ class Supervisor:
             if drive.is_symlink():drive.unlink()
             if drive.exists():raise RuntimeError('Wine drive '+name+' is already occupied')
             drive.symlink_to(target)
-        if request['renderer']=='turnip':
-            for arch,directory in (('x64','system32'),('x86','syswow64')):
-                for dll in ('d3d11','dxgi'):
-                    destination=PREFIX/'drive_c/windows'/directory/(dll+'.dll')
-                    if destination.exists() and not destination.with_suffix('.dll.before-memento').exists():
-                        shutil.copy2(destination,destination.with_suffix('.dll.before-memento'))
-                    temporary=destination.with_suffix('.dll.new')
-                    shutil.copy2(self.root/('dxvk-'+dll+'-'+arch+'.dll'),temporary);os.replace(temporary,destination)
         if request['mode']=='desktop':
             launch=WINE+['explorer','/desktop=Memento,'+request['resolution']]
             cwd=CLIENT
@@ -186,7 +193,8 @@ class Supervisor:
                 launch=WINE+['E:\\dotnet.exe',windows_path(dll.relative_to(CLIENT))]
             else:launch=WINE+[windows_path(info['executable'])]
             cwd=exe.parent
-        game=self.spawn(launch,'client-wine.log',cwd=cwd,env=self.dotnet_environment('client-dotnet-host.log'))
+        env=self.client_environment() if request['mode']=='client' else self.env
+        game=self.spawn(launch,'client-wine.log',cwd=cwd,env=env)
         started=time.monotonic()
         self.update('client_running' if request['mode']=='client' else 'wine_desktop',renderer_requested=request['renderer'],
                     compatibility='Device validation required',launcher_pid=game.pid)

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+bash scripts/build-diagnostics.sh
 probe_work="$PWD/runtime-work/dotnet-wine"
 mkdir -p "$probe_work/wine"
 # Exact Wine 10.0 WoW64 build in the shipped ARM64/Box64 client runtime.

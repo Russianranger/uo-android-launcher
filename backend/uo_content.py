@@ -158,12 +158,66 @@ def local_client_settings(root, metadata):
 
 
 def renderer_settings(root, metadata, renderer):
-    # TazUO's Main.cs overrides FNA3D_FORCE_DRIVER for force_driver 0/1/2.
-    # Auto mode (3) preserves our explicit D3D11 selection for DXVK.
+    # 5.2.0 has no auto mode (3): it falls through to OpenGL. Vulkan (2)
+    # is supported by both that imported version and current TazUO builds.
     path = confined(root, metadata['settings'])
     settings = json.loads(path.read_text(encoding='utf-8-sig'))
-    settings['force_driver'] = 3 if renderer == 'turnip' else 1
+    settings['force_driver'] = 2 if renderer == 'turnip' else 1
     write_json(path, settings)
+
+
+def viewport_settings(root, metadata):
+    """Set the world camera independently of the full window/UI canvas."""
+    root = Path(root).resolve()
+    path = confined(root, metadata['settings'])
+    settings = json.loads(path.read_text(encoding='utf-8-sig'))
+    exe = confined(root, metadata['executable'])
+    custom = (settings.get('profilespath') or '').replace('\\', '/')
+    if custom.lower().startswith('d:/'):
+        profiles = confined(root, custom[3:] or '.')
+    elif custom:
+        profiles = confined(root, str(exe.parent.relative_to(root) / custom))
+    else:
+        profiles = exe.parent/'Data/Profiles'
+    profiles = confined(root, profiles.relative_to(root))
+    targets = [profiles/'default.json']
+    if profiles.exists():
+        targets += sorted(p for p in profiles.rglob('profile.json') if p.is_file())
+    layout = {'window_client_bounds':{'X':1280,'Y':720},
+              'game_window_position':{'X':0,'Y':0},
+              'game_window_size':{'X':1098,'Y':720},
+              'game_window_full_size':False,'game_window_lock':True,'window_borderless':True}
+    pending = []
+    for target in targets:
+        target = confined(root, target.relative_to(root))
+        profile = json.loads(target.read_text(encoding='utf-8-sig')) if target.exists() else {}
+        if not isinstance(profile, dict):
+            raise ValueError('The character profile must contain a JSON object: ' + str(target.relative_to(root)))
+        backup = confined(root, target.with_suffix('.json.before-memento-layout').relative_to(root))
+        pending.append((target, backup, dict(profile, **layout)))
+    # Validate all profile paths/JSON first; never reset unrelated character data.
+    for target, backup, profile in pending:
+        if target.exists() and not backup.exists():shutil.copy2(target, backup)
+        write_json(target, profile)
+    settings.update(window_size={'X':1280,'Y':720},window_position={'X':0,'Y':0},is_win_maximized=False)
+    write_json(path, settings)
+    return {'window':[1280,720], 'world_viewport':[1098,720], 'gump_space_width':182,
+            'profiles_updated':len(targets), 'profile_backup_suffix':'.json.before-memento-layout'}
+
+
+def client_binary_report(root, metadata):
+    """Record versions/sizes only; no profile contents or account credentials."""
+    exe = confined(root, metadata['executable'])
+    report = {'architecture':metadata.get('architecture'), 'self_contained':metadata.get('self_contained')}
+    deps = exe.with_suffix('.deps.json')
+    if deps.is_file():
+        data = json.loads(deps.read_text(encoding='utf-8-sig'))
+        report['packages'] = [name for name in data.get('libraries',{})
+                              if name.startswith(('TazUO/','ClassicUO/','FNA/','runtimepack.Microsoft.NETCore.App.'))]
+    assets = confined(root, metadata['assets'])
+    report['asset_sizes'] = {p.name:p.stat().st_size for p in assets.iterdir()
+                             if p.is_file() and p.name.lower() in ('tiledata.mul','map0.mul','statics0.mul','staidx0.mul')}
+    return report
 
 
 def swap_directory(staging, live):

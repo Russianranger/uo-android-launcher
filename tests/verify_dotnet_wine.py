@@ -78,11 +78,24 @@ try:
     args=[app,runner.windows_path(info['settings'])]
     code=run(args,env,'old-settings.log')
     assert code==2 and 'MEMENTO_CONFIG_INVALID UO directory' in (runner.LOGS/'old-settings.log').read_text()
-    supervisor.request.update(client=info)
+    supervisor.request.update(client=info,gump_space=True,resolution='1280x720')
     supervisor.prepare_client_configuration()
+    supervisor.root=Path(__file__).resolve().parents[1]/'backend-assets'
+    env=supervisor.client_environment()
+    env['DOTNET_HOST_TRACEFILE']=env['COREHOST_TRACEFILE']='Z:'+str(runner.LOGS/'probe-host.log').replace('/','\\')
+    env['MEMENTO_MANAGED_LOG']='Z:'+str(runner.LOGS/'client-managed.log').replace('/','\\')
+    args.append(runner.windows_path((folder/'Data/Profiles/default.json').relative_to(runner.CLIENT)))
     code=run(args,env,'fixed-settings.log')
     output=(runner.LOGS/'fixed-settings.log').read_text(errors='replace')
     assert code==0 and 'MEMENTO_CONFIG_OK '+expected+' 7.0.15.1' in output, output[-8000:]
     assert 'private-' not in (runner.LOGS/'client-config.json').read_text()
+    assert 'MEMENTO_LAYOUT_OK 1098x720 in 1280x720' in output
     print('Fixed: Windows .NET reads the repaired settings and finds the nested Memento data directory',flush=True)
+    print('Verified: Windows .NET reads the 1098x720 world / 1280x720 window profile',flush=True)
+    code=run([app,'--pathfinder-throw'],env,'pathfinder-throw.log',45)
+    captured=(runner.LOGS/'client-managed.log').read_text(errors='replace')
+    assert code not in (0,124), (code,captured)
+    assert 'Hook active: .NET 10.0.8' in captured and 'PATHFINDER FIRST CHANCE' in captured, captured
+    assert 'System.IndexOutOfRangeException' in captured and 'ClassicUO.Game.Pathfinder.CreateItemList' in captured, captured
+    print('Verified: managed startup hook captures a pathfinding exception before FailFast termination',flush=True)
 finally:stop()

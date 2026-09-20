@@ -282,7 +282,7 @@ public final class ClientActivity extends Activity {
                     });
                 }catch(org.json.JSONException ignored){}
             }
-            if(launch!=null&&launch.optString("graphics_backend").equals("turnip")) return String.format(java.util.Locale.ROOT," · DXVK HUD "+(launch.optBoolean("dxvk_hud",true)?"on":"off")+" · %s %.1f/s",nativeActive?"Native Surface":"Current display",displayRate)+displayCost;
+            if(launch!=null&&launch.optString("renderer_requested").equals("turnip")) return String.format(java.util.Locale.ROOT," · Vulkan requested · %s %.1f/s",nativeActive?"Native Surface":"Current display",displayRate)+displayCost;
             return String.format(java.util.Locale.ROOT," · Wine %s/s · Display %.1f/s",fresh?String.format(java.util.Locale.ROOT,"%.1f",wine.optDouble("per_second")):"—",displayRate)+displayCost;
         }
         private boolean position(MotionEvent event) {

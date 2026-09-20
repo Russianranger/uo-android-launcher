@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
-from uo_content import extract_zip, inspect_client, local_client_settings, swap_directory, renderer_settings
+from uo_content import extract_zip, inspect_client, local_client_settings, swap_directory, renderer_settings, viewport_settings
 from engine import Engine
 
 
@@ -31,7 +31,7 @@ class ImportTests(unittest.TestCase):
             local_client_settings(root,info)
             saved=json.loads(settings.read_text());self.assertEqual(saved['ip'],'127.0.0.1');self.assertEqual(saved['ultimaonlinedirectory'],'D:\\Game files');self.assertEqual(saved['clientversion'],'7.0.99.1');self.assertEqual(saved['password'],'retained');self.assertEqual(saved['plugins'],['custom.dll'])
             self.assertTrue(settings.with_suffix('.json.before-memento').exists())
-            renderer_settings(root,info,'turnip');self.assertEqual(json.loads(settings.read_text())['force_driver'],3)
+            renderer_settings(root,info,'turnip');self.assertEqual(json.loads(settings.read_text())['force_driver'],2)
             renderer_settings(root,info,'virgl');self.assertEqual(json.loads(settings.read_text())['force_driver'],1)
 
     def test_existing_import_repairs_ignored_path_and_blank_version_without_reimport(self):
@@ -105,6 +105,54 @@ class ImportTests(unittest.TestCase):
             root=Path(d);live=root/'live';live.mkdir();(live/'keep').write_text('yes')
             with self.assertRaises(FileNotFoundError):swap_directory(root/'missing',live)
             self.assertEqual((live/'keep').read_text(),'yes')
+
+
+class ViewportTests(unittest.TestCase):
+    def test_existing_and_new_characters_keep_gumps_credentials_and_original_backup(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);exe=client_fixture(root);info=inspect_client(root)
+            settings=exe.parent/'settings.json';settings.write_text('{"username":"keep","password":"secret"}')
+            profiles=exe.parent/'Data/Profiles'
+            char=profiles/'account/Memento/Character/profile.json';char.parent.mkdir(parents=True)
+            original={'game_window_size':{'X':1000,'Y':600},'sound':False,'custom':'keep'}
+            char.write_text(json.dumps(original));gumps=char.parent/'gumps.xml';gumps.write_text('<gumps keep="yes"/>')
+            report=viewport_settings(root,info)
+            for p in (char,profiles/'default.json'):
+                data=json.loads(p.read_text())
+                self.assertEqual(data['window_client_bounds'],{'X':1280,'Y':720})
+                self.assertEqual(data['game_window_size'],{'X':1098,'Y':720})
+                self.assertEqual(data['game_window_position'],{'X':0,'Y':0})
+                self.assertFalse(data['game_window_full_size']);self.assertTrue(data['game_window_lock']);self.assertTrue(data['window_borderless'])
+            self.assertFalse(json.loads(char.read_text())['sound'])
+            self.assertEqual(gumps.read_text(),'<gumps keep="yes"/>')
+            saved=json.loads(settings.read_text());self.assertEqual(saved['password'],'secret')
+            self.assertEqual(saved['window_size'],{'X':1280,'Y':720});self.assertFalse(saved['is_win_maximized'])
+            self.assertEqual(report['gump_space_width'],182)
+            viewport_settings(root,info)
+            self.assertEqual(json.loads(char.with_suffix('.json.before-memento-layout').read_text()),original)
+
+    def test_custom_profile_path_and_rejected_escape_or_bad_json(self):
+        for custom in ('D:\\Shared Profiles','../Shared Profiles'):
+            with self.subTest(custom=custom),tempfile.TemporaryDirectory() as d:
+                root=Path(d);exe=client_fixture(root);info=inspect_client(root)
+                settings=exe.parent/'settings.json';settings.write_text(json.dumps({'profilespath':custom}))
+                if custom.startswith('..'):
+                    with self.assertRaises(ValueError):viewport_settings(root,info)
+                else:
+                    viewport_settings(root,info);self.assertTrue((root/'Shared Profiles/default.json').exists())
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);exe=client_fixture(root);info=inspect_client(root)
+            (exe.parent/'settings.json').write_text('{}')
+            profiles=exe.parent/'Data/Profiles';char=profiles/'character/profile.json';char.parent.mkdir(parents=True)
+            char.write_text('[]')
+            with self.assertRaisesRegex(ValueError,'JSON object'):viewport_settings(root,info)
+            self.assertFalse((profiles/'default.json').exists())
+            outside=root.parent/(root.name+'-outside.json');outside.write_text('{}')
+            try:
+                char.unlink();char.symlink_to(outside)
+                with self.assertRaises(ValueError):viewport_settings(root,info)
+                self.assertEqual(outside.read_text(),'{}')
+            finally:outside.unlink()
 
 
 class WorldTests(unittest.TestCase):

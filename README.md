@@ -1,12 +1,12 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.1.3
+## Updating Recovery to 0.1.4
 
-Save and close the realm runtime, stop the client, then install the 0.1.3 APK over **UO Memento Recovery**. The package ID and signing certificate are unchanged. Keep app data; no server rebuild, client reimport, .NET download or migration is needed.
+Save and close the realm runtime, stop the client, then install the 0.1.4 APK over **UO Memento Recovery**. Keep app data; no server rebuild, client reimport, .NET download or migration is needed. CI checks the existing signing certificate.
 
-This update fixes TazUO's “could not find the UO directory” error. The launcher now writes `ultimaonlinedirectory`, the key TazUO actually reads, and repairs earlier imports on launch. Blank client versions use Memento's documented asset/protocol version **7.0.15.1**; existing versions, credentials, plugins and other settings are retained. The original settings backup is preserved. Missing required data files are reported before Wine starts.
+**1098×720 world + gump space** is enabled by default at **1280×720**. It sets a fixed borderless world viewport on the left and leaves **182 pixels** on the right for gumps. Existing and new character profiles receive the layout; other settings and saved gumps are preserved. Original profiles are backed up once beside each JSON as `.json.before-memento-layout`. Turn this option off to manage the layout within TazUO; turning it off does not restore the old layout automatically.
 
-Retry with **Turnip / 1280×720 / Native Surface / 60 FPS**. Export **Journal → Export support logs** afterward; `client-config.json` records the resolved data path and version without saved credentials. The Wine 10 / bundled .NET 10.0.8 CI probe verifies both the managed-loader fix from 0.1.2 and access to the reported nested data folder. Graphics, gameplay and Box64 compatibility still require device testing.
+Use **Turnip / Vulkan / 1280×720 / Native Surface / 60 FPS**. The imported TazUO 5.2.0 does not support the old auto-driver value: it chose software OpenGL. This update selects its supported Vulkan driver. The reported crash is in movement/pathfinding; its underlying exception is not yet known. `client-managed.log` adds bounded exception capture, and `client-config.json` records version/layout diagnostics without saved credentials. Export **Journal → Export support logs** after testing. Wine/.NET checks run in CI; ARM64 Box64, Adreno rendering and world stability still require device testing.
 
 ## 0.1.1 recovery build
 
@@ -26,7 +26,7 @@ A standalone ARM64 Android launcher for **Ultima Memento + the imported Windows 
 3. In **Client**, import your **complete Windows Memento client folder or ZIP**, including `TazUO.exe` (or `ClassicUO.exe`), its DLL/runtimeconfig, and the Memento asset directory. ZIPs may contain an outer folder. Include exactly one client and one asset directory with `tiledata.mul`, `cliloc.enu`, and `map0.mul`. Your imported settings, client version, credentials and plugins are retained; the server address and asset path are prepared for this app.
 4. Select **Install client runtime**, then **Prepare required .NET**. The app detects the required version and x64/x86 architecture and downloads Microsoft's matching portable runtime with SHA-512 verification. A self-contained client uses its included runtime.
 5. Return to **Realm → Start server**. Wait for **ONLINE**; first-start script compilation can take several minutes. If it fails, read `server.log` in Journal.
-6. Launch TazUO with **Turnip 26 + DXVK**, **1280×720**, **Native Surface**, **60**, audio enabled. Start with **Test Wine desktop** if client startup fails. The gear menu provides keyboard, Esc, mappings and return to the launcher.
+6. Launch TazUO with **Turnip 26 · Vulkan**, **1280×720**, **Native Surface**, **60**, audio enabled. Start with **Test Wine desktop** if client startup fails. The gear menu provides keyboard, Esc, mappings and return to the launcher.
 7. Log in, enter the world, move, open inventory, test targeting and audio. LT cycles the four initial layers and displays the active layer at the top. Map your TazUO macros to the chosen keys. Do not enable conflicting native controller bindings in TazUO.
 8. Log out, use **Save & stop**, restart the server and confirm the character and items persist. Create and export a world backup. Use **Journal → Export support logs** to report any issue.
 
@@ -55,12 +55,13 @@ World archives include accounts and characters but exclude game asset files and 
 
 ## Build
 
-JDK 17, Gradle 8.11.1, Android SDK 35/build tools 35.0.0:
+.NET SDK 10, JDK 17, Gradle 8.11.1, Android SDK 35/build tools 35.0.0:
 
 ```sh
 python3 -m unittest discover -s tests -v
 bash scripts/check-input.sh
 python3 scripts/prepare-assets.py
+bash scripts/build-diagnostics.sh
 gradle --no-daemon :app:assembleDebug :app:lintDebug
 ```
 
