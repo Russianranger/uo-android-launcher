@@ -9,7 +9,11 @@ if [ ! -d "$probe/FNA/.git" ]; then
 fi
 git -C "$probe/FNA" checkout --quiet fb477d965e2e7c531a7dba3a10295ff1f8d1fb9f
 git -C "$probe/FNA" submodule update --init --depth 1 lib/SDL2-CS lib/SDL3-CS lib/FAudio lib/Theorafile
-dotnet build "$probe/FNA/FNA.Core.csproj" -p:TargetFramework=net10.0 -c Release -o "$probe/fna-build" --nologo
+# Use FNA's supported props import so restore and build see the same framework.
+cat > "$probe/FNA.Settings.props" <<'EOF'
+<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>
+EOF
+dotnet build "$probe/FNA/FNA.Core.csproj" -p:FNASettingsPropsFilePath="$probe/FNA.Settings.props" -c Release -o "$probe/fna-build" --nologo
 dotnet publish tests/paint-probe/PaintProbe.csproj -c Release -o "$probe/app" --nologo
 cp runtime-work/sdl-probe/updated/FNA3D.dll runtime-work/sdl-probe/updated/SDL3.dll "$probe/app/"
 client_ref=https://raw.githubusercontent.com/PlayTazUO/TazUO/73768f6653d39788b00f5bce5b2a063dc76452aa/external/x64
