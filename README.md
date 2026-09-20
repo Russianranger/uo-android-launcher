@@ -1,18 +1,18 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.1.6
+## Updating Recovery to 0.1.7
 
-Save and close the realm runtime, stop the client, then install the 0.1.6 APK over **UO Memento Recovery**. Keep app data; no server rebuild, client reimport, .NET download or migration is needed. CI checks the existing signing certificate.
+Save and close the realm runtime, stop the client, then install the 0.1.7 APK over **UO Memento Recovery**. Keep app data; no server rebuild, client reimport, .NET download or migration is needed. CI checks the existing signing certificate.
 
 **1098×720 world + gump space** is enabled by default at **1280×720**. It sets a fixed borderless world viewport on the left and leaves **182 pixels** on the right for gumps. Existing and new character profiles receive the layout; other settings and saved gumps are preserved. Original profiles are backed up once beside each JSON as `.json.before-memento-layout`. Turn this option off to manage the layout within TazUO; turning it off does not restore the old layout automatically.
 
 Use **Turnip / Vulkan / 1280×720 / Native Surface / 60 FPS**. Version 0.1.5 fixes a startup race that opened the display before Native Surface and relative input were ready. In the 0.1.4 test this silently left the display on RFB. Check **Native Surface** in the gear menu after upgrading.
 
-The 0.1.5 test confirmed Native Surface was active and reported better FPS, but TazUO terminated after 594 seconds with a native `0xC0000005` access violation. No managed exception was recorded; the older render-list crash report in the ZIP belongs to the previous session.
+Version 0.1.7 corrects an error in 0.1.6: the experimental memory settings also reached Wine setup and its helpers. The reported attempt ended with SIGKILL (code -9) in `wineboot`, about 22 seconds into startup, before TazUO was launched. The logs do not identify who sent the kill signal or prove its cause.
 
-Version 0.1.6 adds **Memory compatibility (experimental)** under Client → Display & sound, enabled for existing and new installations. It tests stricter Box64 memory ordering (`STRONGMEM=3`, `WEAKBARRIER=0`). Turn it off and restart the client to compare with 0.1.5's ordering (`1` / `1`). This is a reversible mitigation, **not a confirmed crash fix**, and may reduce FPS. The imported client, .NET JIT/GC policy, rendering and world layout remain intact.
+**Memory compatibility is now off by default, including after upgrading from 0.1.6.** A new saved-option key intentionally resets the old automatic opt-in while preserving display, audio and viewport preferences. Keep it off for the recovery test. Wine setup, preflight, desktop and teardown always use the earlier memory settings (`STRONGMEM=1`, `WEAKBARRIER=1`). If explicitly enabled later, the experiment only changes the game launch environment (`3` / `0`), without mutating the setup environment.
 
-Native fault addresses/registers and Wine module bases now accompany the bounded support logs. The ten-second FPS samples also include managed memory and GC counts without forcing collections. Test for 20 minutes with Memory compatibility on, then export **Journal → Export support logs**, even if stable. See the release notes for validation limits.
+Launch the existing client with your usual display settings, confirm login/world entry, then continue normal play if it starts. Export **Journal → Export support logs** after the test or immediately on failure. No reimport, server rebuild or runtime download is needed. Old gameplay logs move into bounded history at the start of each attempt, and status records whether the client was actually launched. Native crash diagnostics and memory/FPS sampling remain available. The earlier roughly ten-minute gameplay crash is still unresolved; this update restores the startup settings and does not claim to fix that longer-session crash.
 
 ## 0.1.1 recovery build
 

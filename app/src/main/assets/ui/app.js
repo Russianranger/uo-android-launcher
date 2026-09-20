@@ -3,11 +3,11 @@ const $=id=>document.getElementById(id),pending=new Map();let sequence=0,polling
 function call(operation,args={}){return new Promise((resolve,reject)=>{const id=String(++sequence);pending.set(id,{resolve,reject});if(window.Memento)Memento.call(id,operation,JSON.stringify(args));else{pending.delete(id);reject(new Error('Open this screen inside UO Memento.'));}});}
 window.nativeReply=(id,value)=>{const p=pending.get(id);if(!p)return;pending.delete(id);value.ok?p.resolve(value.result):p.reject(new Error(value.error));};
 function notice(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);}
-function options(mode='client'){return{mode,renderer:$('renderer').value,resolution:$('resolution').value,presentation_mode:$('presentation').value,display_fps:Number($('fps').value),audio:$('audio').checked,gump_space:$('gump-space').checked,memory_compatibility:$('memory-compatibility').checked};}
+function options(mode='client'){return{mode,renderer:$('renderer').value,resolution:$('resolution').value,presentation_mode:$('presentation').value,display_fps:Number($('fps').value),audio:$('audio').checked,gump_space:$('gump-space').checked,client_memory_compatibility:$('memory-compatibility').checked};}
 function saveOptions(){localStorage.setItem('launch',JSON.stringify(options()));}
 try{const v=JSON.parse(localStorage.getItem('launch')||'{}');for(const [key,id]of[['renderer','renderer'],['resolution','resolution'],['presentation_mode','presentation'],['display_fps','fps']])if(v[key])$(id).value=v[key];if(typeof v.audio==='boolean')$('audio').checked=v.audio;}catch(_){}
 try{const v=JSON.parse(localStorage.getItem('launch')||'{}');$('gump-space').checked=$('resolution').value==='1280x720'&&v.gump_space!==false;}catch(_){}
-try{const v=JSON.parse(localStorage.getItem('launch')||'{}');$('memory-compatibility').checked=v.memory_compatibility!==false;}catch(_){}
+try{const v=JSON.parse(localStorage.getItem('launch')||'{}');$('memory-compatibility').checked=v.client_memory_compatibility===true;}catch(_){}
 $('gump-space').addEventListener('change',()=>{if($('gump-space').checked)$('resolution').value='1280x720';saveOptions();});
 $('resolution').addEventListener('change',()=>{if($('resolution').value!=='1280x720')$('gump-space').checked=false;saveOptions();});
 for(const id of['renderer','presentation','fps','audio','memory-compatibility'])$(id).addEventListener('change',saveOptions);

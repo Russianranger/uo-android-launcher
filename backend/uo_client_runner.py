@@ -30,12 +30,15 @@ class Supervisor:
         self.children=[]
         self.threads=[]
         self.root=Path(__file__).parent
-        self.status={'phase':'starting','display_ready':False,'resolution':request['resolution'],'display_target_fps':request['display_fps']}
+        self.status={'phase':'starting','display_ready':False,'client_started':False,
+                     'attempt_started_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
+                     'resolution':request['resolution'],'display_target_fps':request['display_fps']}
         self.env=dict(os.environ,DISPLAY=':8',XAUTHORITY='/session/Xauthority',WINEPREFIX='/prefix',WINEARCH='win64',
                       # Wine's IL-only DLL loader requires mscoree even with modern
                       # CoreCLR. Disable it only in the wineboot child environment.
                       WINEDEBUG='-all,err+all',WINEDLLOVERRIDES='winemenubuilder,mshtml=;mscoree=b',
-                      BOX64_DYNAREC_STRONGMEM='1',BOX64_DYNAREC_BIGBLOCK='0',BOX64_DYNAREC_SAFEFLAGS='2',
+                      BOX64_DYNAREC_STRONGMEM='1',BOX64_DYNAREC_WEAKBARRIER='1',
+                      BOX64_DYNAREC_BIGBLOCK='0',BOX64_DYNAREC_SAFEFLAGS='2',
                       BOX64_DYNAREC_MISSING='0',BOX64_PATH='/opt/wine/bin',BOX64_LOG='1',
                       BOX64_LD_LIBRARY_PATH='/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:/opt/wine/lib/wine/x86_64-unix',
                       LD_LIBRARY_PATH=str(self.root),BOX64_RCFILE=str(SESSION/'box64.rc'),BOX64_MAXCPU='0',
@@ -45,15 +48,12 @@ class Supervisor:
         # eight-core handheld. Keep the conservative flags and real CPU count.
         (SESSION/'box64.rc').write_text('[wine]\nBOX64_MAXCPU=0\n[wine64]\nBOX64_MAXCPU=0\n'
                                        '[explorer.exe]\nBOX64_DYNAREC_BIGBLOCK=0\n')
-        # The latest failure is a native CoreCLR access violation, not the
-        # earlier managed render-list exception. Test stricter x86 memory
-        # ordering without changing the imported client or its JIT/GC policy.
-        compatibility=request.get('memory_compatibility',True)
+        # 0.1.6 mistakenly applied its experiment to wineboot and services too.
+        # The new key deliberately ignores an old persisted opt-in. Keep setup,
+        # preflight, desktop and teardown on the known-working base environment.
+        compatibility=request.get('client_memory_compatibility',False)
         if not isinstance(compatibility,bool):raise ValueError('Invalid memory compatibility option')
-        if request.get('mode','client')=='client':
-            self.env.update(BOX64_DYNAREC_STRONGMEM='3' if compatibility else '1',
-                            BOX64_DYNAREC_WEAKBARRIER='0' if compatibility else '1')
-            self.status['memory_compatibility']=compatibility
+        self.status['memory_compatibility']=compatibility and request.get('mode','client')=='client'
         renderer=request['renderer']
         if renderer=='turnip':
             write_json(SESSION/'turnip-icd.json',{'file_format_version':'1.0.0','ICD':{'library_path':str(self.root/'turnip-26.0.0.so'),'api_version':'1.3.0'}})
@@ -97,12 +97,18 @@ class Supervisor:
 
     def run(self,args,log='client-prefix.log',timeout=180,env=None):
         process=self.spawn(args,log,env=env)
-        deadline=time.monotonic()+timeout
+        started=time.monotonic()
+        deadline=started+timeout
         while process.poll() is None:
             if self.stopping():raise InterruptedError('Client stopped')
             if time.monotonic()>deadline:raise RuntimeError('Setup timed out. Open '+log)
             time.sleep(.2)
-        if process.returncode:raise RuntimeError('Setup exited with code '+str(process.returncode)+'. Open '+log)
+        if process.returncode:
+            self.update(setup_exit_code=process.returncode,setup_log=log,
+                        setup_seconds=round(time.monotonic()-started,2))
+            if process.returncode==-signal.SIGKILL:
+                raise RuntimeError('Setup was killed by SIGKILL (code -9) before the client started. Open '+log)
+            raise RuntimeError('Setup exited with code '+str(process.returncode)+'. Open '+log)
 
     def prepare_prefix(self):
         marker=PREFIX/'memento-prefix-ready'
@@ -145,6 +151,8 @@ class Supervisor:
 
     def client_environment(self):
         env=self.dotnet_environment('client-dotnet-host.log')
+        if self.status['memory_compatibility']:
+            env.update(BOX64_DYNAREC_STRONGMEM='3',BOX64_DYNAREC_WEAKBARRIER='0')
         hook=self.root/'Memento.Diagnostics.dll'
         if not hook.is_file():raise RuntimeError('Client diagnostics component is missing; reinstall the current APK')
         from log_retention import rotate
@@ -158,6 +166,8 @@ class Supervisor:
         env.update(BOX64_SHOWSEGV='1',BOX64_SHOWBT='0',WINEDEBUG='-all,err+all,trace+loaddll')
         write_json(LOGS/'client-compatibility.json',{
             'memory_compatibility':self.status.get('memory_compatibility',False),
+            'scope':'game_launch_only',
+            'attempt_started_utc':self.status['attempt_started_utc'],
             'environment':{key:env[key] for key in (
                 'BOX64_DYNAREC_STRONGMEM','BOX64_DYNAREC_WEAKBARRIER','BOX64_DYNAREC_BIGBLOCK',
                 'BOX64_DYNAREC_SAFEFLAGS','BOX64_SHOWSEGV','BOX64_SHOWBT','WINEDEBUG')},
@@ -169,6 +179,14 @@ class Supervisor:
         request=self.request
         if request['mode'] not in ('desktop','client') or request['renderer'] not in ('turnip','virgl','software') or request['resolution'] not in ('800x600','1024x768','1280x720'):
             raise ValueError('Invalid launch options')
+        # If Wine setup fails, an earlier gameplay crash must not appear as this
+        # attempt's current output. Preserve it in the normal bounded history.
+        from log_retention import rotate
+        for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json'):
+            path=LOGS/name
+            rotate(path)
+            path.unlink(missing_ok=True)
+        self.update('starting')
         if request['mode']=='client':self.prepare_client_configuration()
         self.update('checking_libraries')
         self.run(['/usr/bin/python3','-c','import ctypes; ctypes.CDLL("libXcomposite.so.1"); print("XComposite ready")'],
@@ -218,7 +236,7 @@ class Supervisor:
         game=self.spawn(launch,'client-wine.log',cwd=cwd,env=env)
         started=time.monotonic()
         self.update('client_running' if request['mode']=='client' else 'wine_desktop',renderer_requested=request['renderer'],
-                    compatibility='Device validation required',launcher_pid=game.pid)
+                    compatibility='Device validation required',launcher_pid=game.pid,client_started=request['mode']=='client')
         while not self.stopping():
             if display.poll() is not None:raise RuntimeError('Embedded display exited')
             code=game.poll()
