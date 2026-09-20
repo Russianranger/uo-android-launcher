@@ -1,5 +1,13 @@
 # UO Memento for Android
 
+## Updating Recovery 0.1.1 to 0.1.2
+
+Save and close the realm runtime, stop the client, then install the 0.1.2 APK over **UO Memento Recovery**. The package ID and signing certificate are unchanged. Keep app data; no server rebuild, client reimport, .NET download or migration is needed.
+
+This update fixes the managed-DLL loading regression introduced in 0.1.1. Wine's builtin `mscoree` stays enabled for .NET/TazUO and is disabled only in the separate Wine setup process to suppress the Mono installer. A Wine 10 / bundled .NET 10.0.8 test reproduces the old failure and checks that the fixed environment runs managed code.
+
+Retry with **Turnip / 1280×720 / Native Surface / 60 FPS**. After the attempt, export **Journal → Export support logs**. Graphics, gameplay and Box64 compatibility still require device testing.
+
 ## 0.1.1 recovery build
 
 The original preview's signing key was not saved by CI, so 0.1.1 installs separately as **UO Memento Recovery**. Keep the original app installed; do not clear its data. The new APK fixes log export and the evidenced Wine startup issues.

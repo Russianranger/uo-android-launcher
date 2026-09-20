@@ -16,3 +16,9 @@ The first release is a compatibility preview. The inherited Wine/Box64 execution
 - XComposite: Debian Bookworm `libxcomposite1` ARM64, version `1:0.4.5-1`, from `https://deb.debian.org/debian/pool/main/libx/libxcomposite/libxcomposite1_0.4.5-1_arm64.deb`. SHA-256: `cfe39326fdb822e9d060ed5eb3f95b14459dd6b73793c5290000f9b27f8bad37`.
 - Only `libXcomposite.so.1.0.0` is copied into the APK as `libXcomposite.so.1`; its Debian copyright/license file is included as `libXcomposite-COPYRIGHT` in the APK assets. The library uses the MIT/X11 license. Source package: `https://deb.debian.org/debian/pool/main/libx/libxcomposite/`.
 - The overlay is loaded from `/opt/uo-client` with `LD_LIBRARY_PATH`; the installed runtime archive and package database are unchanged.
+
+## Managed-loader regression (0.1.2)
+
+- Evidence: the user's 0.1.1 support bundle reaches bundled CoreCLR 10.0.8, then Wine reports `fixup_imports_ilonly mscoree.dll not found` for `System.Runtime.dll` and the process exits with code 82.
+- Wine 10 implementation: [dlls/ntdll/loader.c, fixup_imports_ilonly](https://github.com/wine-mirror/wine/blob/wine-10.0/dlls/ntdll/loader.c). This loader imports `mscoree.dll` for IL-only modules independently of which CLR hosts the app.
+- The CI probe uses the same checksum-pinned Wine 10.0 WoW64 archive as the client runtime and Microsoft's `Microsoft.NETCore.App.Runtime.win-x64` 10.0.8 runtime pack. Probe source is in `tests/managed-probe`; it contains no game files.
