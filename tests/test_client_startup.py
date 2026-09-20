@@ -48,6 +48,45 @@ class StartupTests(unittest.TestCase):
         for thread in supervisor.threads:thread.join(timeout=2)
         self.assertIn('hostfxr failed',(runner.LOGS/'client-dotnet.log').read_text())
 
+    def test_memory_compatibility_default_opt_out_and_setup_scope(self):
+        for choice,strong,weak in ((None,'3','0'),(True,'3','0'),(False,'1','1')):
+            request=dict(self.request)
+            if choice is not None:request['memory_compatibility']=choice
+            with self.subTest(choice=choice):
+                supervisor=runner.Supervisor(request)
+                supervisor.root=runner.SESSION
+                (supervisor.root/'Memento.Diagnostics.dll').touch()
+                env=supervisor.client_environment()
+                self.assertEqual(env['BOX64_DYNAREC_STRONGMEM'],strong)
+                self.assertEqual(env['BOX64_DYNAREC_WEAKBARRIER'],weak)
+                self.assertEqual(env['BOX64_DYNAREC_BIGBLOCK'],'0')
+                self.assertEqual(env['BOX64_SHOWSEGV'],'1')
+                self.assertEqual(env['BOX64_SHOWBT'],'0')
+                self.assertIn('trace+loaddll',env['WINEDEBUG'])
+                self.assertNotIn('BOX64_SHOWSEGV',supervisor.setup_environment())
+                self.assertNotIn('trace+loaddll',supervisor.setup_environment()['WINEDEBUG'])
+                self.assertIn('mscoree=b',env['WINEDLLOVERRIDES'].split(';'))
+                report=json.loads((runner.LOGS/'client-compatibility.json').read_text())
+                self.assertEqual(report['memory_compatibility'],choice is not False)
+                self.assertEqual(report['environment']['BOX64_DYNAREC_STRONGMEM'],strong)
+                self.assertNotIn('DOTNET_TieredCompilation',env)
+        desktop=runner.Supervisor(dict(self.request,mode='desktop'))
+        self.assertEqual(desktop.env['BOX64_DYNAREC_STRONGMEM'],'1')
+        with self.assertRaisesRegex(ValueError,'Invalid memory compatibility'):
+            runner.Supervisor(dict(self.request,memory_compatibility='false'))
+
+    def test_native_crash_tail_survives_verbose_log_rotation(self):
+        supervisor=runner.Supervisor(self.request)
+        with self.assertRaisesRegex(RuntimeError,'code 2'):
+            supervisor.run([sys.executable,'-c',
+                'import sys; sys.stdout.write("x"*(9*1024*1024)); print("\\nFatal error.\\n0xC0000005",flush=True); sys.exit(2)'],
+                log='client-wine.log',timeout=10)
+        for thread in supervisor.threads:thread.join(timeout=2)
+        current=runner.LOGS/'client-wine.log'
+        self.assertIn('0xC0000005',current.read_text())
+        self.assertLessEqual(current.stat().st_size,8*1024*1024)
+        self.assertTrue((runner.LOGS/'client-wine.previous.log').is_file())
+
     def test_early_clean_client_exit_is_visible_and_host_tracing_enabled(self):
         supervisor=runner.Supervisor(self.request)
         supervisor.root=runner.SESSION
