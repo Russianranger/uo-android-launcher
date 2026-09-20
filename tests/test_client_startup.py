@@ -57,6 +57,7 @@ class StartupTests(unittest.TestCase):
                 supervisor.root=runner.SESSION
                 (supervisor.root/'Memento.Diagnostics.dll').touch()
                 env=supervisor.client_environment()
+                self.assertEqual(env['FNA_WIN32_IGNORE_WM_PAINT'],'1')
                 self.assertEqual(env['BOX64_DYNAREC_STRONGMEM'],strong)
                 self.assertEqual(env['BOX64_DYNAREC_WEAKBARRIER'],weak)
                 self.assertEqual(env['BOX64_DYNAREC_BIGBLOCK'],'0')
@@ -67,6 +68,7 @@ class StartupTests(unittest.TestCase):
                 self.assertNotIn('trace+loaddll',supervisor.setup_environment()['WINEDEBUG'])
                 for baseline in (supervisor.env,supervisor.setup_environment(),
                                  supervisor.dotnet_environment('client-dotnet-check-host.log')):
+                    self.assertNotIn('FNA_WIN32_IGNORE_WM_PAINT',baseline)
                     self.assertEqual(baseline['BOX64_DYNAREC_STRONGMEM'],'1')
                     self.assertEqual(baseline['BOX64_DYNAREC_WEAKBARRIER'],'1')
                 # Even after constructing the experimental game environment,

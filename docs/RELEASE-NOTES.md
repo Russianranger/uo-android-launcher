@@ -1,32 +1,33 @@
-# UO Memento 0.1.10 Recovery — SDL Vulkan resource recovery
+# UO Memento 0.1.11 Recovery — Serialize client repaint events
 
-Install over Recovery without clearing data. This is a targeted graphics compatibility preview; it does not establish that the Thor crashes are solved.
+Install over Recovery without clearing data. No runtime download, server rebuild or client reimport is required.
 
-## What the current logs establish
+## Evidence from this attempt
 
-The 0.1.9 attempt starts Wine and TazUO, loads UO data and connects. Box64 then records a native access violation in `turnip-26.0.0.so` (access to `0x78`), followed by Wine's `!status && "vkDestroyImageView"` assertion. The client exits after approximately 156 seconds with final code -9. That code does not identify who sent the kill signal. Managed diagnostics and the experimental memory profile were both off. Sampled process RSS reaches about 750 MB; these samples do not establish Android-wide memory pressure or an out-of-memory kill.
+The 0.1.10 support bundle confirms the SDL 3.4.16 update was active. TazUO entered the world, then terminated at 21:52:19 with `System.InvalidOperationException: InvalidOperation_EnumFailedVersion` in `GameScene.DrawRenderList` (line 1328), through `DrawWorld` and `Game.Tick`. The supervisor recorded exit 82 after 911 seconds of client process runtime. The server remained running.
 
-This identifies the failing Vulkan resource-destruction path, not which component originally supplied the invalid state. The launcher, Wine/Box64, driver, SDL and client still form an unverified Android graphics stack.
+This attempt does not show the previous `vkDestroyImageView` assertion or native access violation. The native frame-delivery error appears during teardown after the managed crash. Exit 82 alone is not a diagnosis; the managed exception and stack identify this failure.
 
-## Narrow, reversible change
+## Targeted mitigation
 
-The exact TazUO 5.2 source distribution bundles SDL 3.2.27. SDL subsequently fixed Vulkan allocation defragmentation while transfers remain pending, including multi-threaded use ([upstream fix](https://github.com/libsdl-org/SDL/pull/15127)), and subsequent cleanup/barrier crashes. The bundled official SDL 3.4.16 includes these fixes. They are relevant candidate fixes; the current device fault has not been reproduced or proven to be that upstream bug.
+TazUO fills and then enumerates shared render lists during drawing. Its pinned FNA Windows event filter can synchronously invoke `RedrawWindow` on a window-exposure event, including while another draw is in progress. That nested draw can clear/repopulate a list whose outer enumerator is still active, producing the observed exception type and draw path.
 
-- Before a Turnip client launch, upgrade **only** the recognized x64 SDL/FNA3D pair from TazUO 5.2. Both original DLL checksums must match. Custom, newer, missing and x86 libraries are left untouched.
-- Preserve the original SDL beside the executable as `SDL3.dll.before-memento-3.4.16`. Verify checksums and replace atomically. The imported client executable, FNA3D, game files and .NET remain unchanged.
-- **SDL Vulkan resource fixes (preview)** is enabled by default. Turn it off and relaunch to restore the original SDL from its verified backup. Switching to OpenGL also restores that backup. An already imported SDL 3.4.16 with no launcher backup is left as imported.
-- Record active SDL version and SDL/FNA3D checksums in `client-config.json` and `client-state.json`, so a skipped or applied update is visible in support logs. No credentials are recorded in this report.
+The client launch now sets FNA's supported `FNA_WIN32_IGNORE_WM_PAINT=1` hint. This skips the immediate Windows paint filter. Exposed-window events still receive redraws through FNA's ordinary game-loop polling. The setting applies to the game process and is recorded in `client-compatibility.json`; Wine setup and the desktop retain their existing environment.
 
-Wine, Box64, Turnip, audio, controller mappings and the 1098×720 world inside the 1280×720 canvas remain configured as before. There is no runtime download or server rebuild for this update.
+Source references: [TazUO 5.2 render-list iteration](https://github.com/PlayTazUO/TazUO/blob/73768f6653d39788b00f5bce5b2a063dc76452aa/src/ClassicUO.Client/Game/Scenes/GameScene.cs), [its pinned FNA SDL3 filter and event loop](https://github.com/FNA-XNA/FNA/blob/fb477d965e2e7c531a7dba3a10295ff1f8d1fb9f/src/FNAPlatform/SDL3_FNAPlatform.cs), and [FNA RedrawWindow](https://github.com/FNA-XNA/FNA/blob/fb477d965e2e7c531a7dba3a10295ff1f8d1fb9f/src/Game.cs).
+
+The launcher also labels failures after the client process has started as **Client stopped unexpectedly**, and suppresses display-fallback reconnection/toasts when the supervisor has already reported a client failure or stopped.
 
 ## Verification and limits
 
-Release gates exercise the **actual TazUO 5.2 FNA3D.dll**, first with its original SDL and then with the packaged updated SDL, under the pinned Wine 10 build and a Vulkan software driver. The native fixture creates/disposes 1,920 render targets, resizes the backbuffer six times, and verifies 120 pixel readbacks. This checks binary compatibility and resource-lifetime operations on x86-64 Linux, not ARM64/Box64/Turnip or long gameplay sessions.
+The new required Wine regression builds the exact FNA submodule used by TazUO 5.2 and runs it with .NET 10.0.8, Wine 10, the actual TazUO FNA3D/FAudio libraries, SDL 3.4.16 and Mesa Vulkan. It injects an SDL window-exposure event during render-list enumeration. The old policy must reproduce an `InvalidOperationException` after a nested draw. The production policy must process 64 exposures and at least 160 draws with no nested draw or exception. The test does not replace FNA with a mock or swallow an exception in the production client.
 
-Additional gates cover reversible upgrades, rejection of changed backups, interrupted writes, preservation of unknown client versions, persisted UI options, isolated imports and the SDL checksum from the built APK. Existing server compilation, Android build/lint, signing continuity, managed Wine probes and input/log checks remain required.
+This verifies the reentrancy mechanism and its mitigation on x86-64 CI. The device log does not record the original exposure event, so it does not conclusively prove that this mechanism caused the Thor crash. It also does not establish long-session stability under ARM64/Box64/Turnip. Existing native Vulkan, managed loader, client configuration, server compile, Android build/lint, packaged-APK import, input/log and signing-continuity checks remain required.
 
 ## Install and compare
 
-1. Save/stop the server and stop the client. Install 0.1.10 over Recovery; keep app data.
-2. Leave **SDL Vulkan resource fixes ON**, **Memory compatibility OFF** and **Detailed client diagnostics OFF**. Retain Turnip, Native Surface and 1280×720.
-3. Launch your existing realm/client. If it crashes, export support logs; the active-library report will distinguish this attempt from earlier ones. You can return to the original graphics library by disabling the new option and relaunching.
+1. Save/stop the realm and stop the client. Install 0.1.11 over Recovery; keep app data.
+2. Retain **SDL Vulkan resource fixes ON**, **Memory compatibility OFF**, **Detailed client diagnostics OFF**, Turnip and Native Surface. The repaint mitigation is automatic.
+3. Keep 1280×720 with the 1098×720 world option for the 182-pixel gump area. Launch the existing client. If it fails again, export support logs; they now identify the active repaint policy as well as the DLLs.
+
+No client executable patch, client reimport, new CPU preset or renderer switch is needed for this update.

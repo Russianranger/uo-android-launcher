@@ -1,10 +1,10 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.1.10
+## Updating Recovery to 0.1.11
 
-Install the 0.1.10 APK over **UO Memento Recovery** after saving/stopping the realm and stopping the client. Keep app data. No runtime download, server rebuild or client reimport is required.
+Install the 0.1.11 APK over **UO Memento Recovery** after saving/stopping the realm and stopping the client. Keep app data. No runtime download, server rebuild or client reimport is required.
 
-The newest bundle reaches the client and then faults in Turnip during `vkDestroyImageView`. **0.1.10 is a graphics compatibility preview, not a verified cure for the Thor crashes.** It brings upstream SDL Vulkan resource-lifetime fixes to the exact recognized TazUO 5.2 x64 library pair. The original SDL is preserved; custom/newer clients are left untouched. Active DLL hashes and the applied/skipped action appear in support logs. See [the evidence and verification limits](docs/RELEASE-NOTES.md).
+The latest 0.1.10 log records a collection-modified exception in TazUO's `DrawRenderList` after about 15 minutes of process runtime. This update makes FNA handle Windows repaint events through its game loop, preventing its immediate paint callback from reentering an active draw and invalidating the render-list enumerator. A Wine regression uses TazUO's pinned FNA source and actual native libraries to reproduce that mechanism and check the mitigation. The device's exact triggering event and long-session stability still require validation. See [the evidence and verification limits](docs/RELEASE-NOTES.md).
 
 Leave **SDL Vulkan resource fixes ON**, **Memory compatibility OFF**, and **Detailed client diagnostics OFF**. Use Turnip, Native Surface, 60 FPS and 1280×720. The **1098×720 world view** leaves **182 pixels** on the right for gumps. Controller mappings, saves, profiles and game data remain intact. Disable the SDL option and relaunch to restore its original backed-up library.
 

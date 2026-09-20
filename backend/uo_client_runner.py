@@ -165,6 +165,10 @@ class Supervisor:
 
     def client_environment(self):
         env=self.dotnet_environment('client-dotnet-host.log')
+        # FNA's Windows event filter can call RedrawWindow inside an active
+        # Draw, clearing TazUO's render lists under their foreach enumerators.
+        # Queue exposed-window redraws through FNA's normal game-loop polling.
+        env['FNA_WIN32_IGNORE_WM_PAINT']='1'
         if self.status['memory_compatibility']:
             env.update(BOX64_DYNAREC_STRONGMEM='3',BOX64_DYNAREC_WEAKBARRIER='0')
         if self.status['managed_diagnostics']:
@@ -184,10 +188,11 @@ class Supervisor:
             'managed_diagnostics':self.status['managed_diagnostics'],
             'external_health_log':'client-health.log',
             'scope':'game_launch_only',
+            'window_repaint_policy':'game_loop_only',
             'attempt_started_utc':self.status['attempt_started_utc'],
             'environment':{key:env[key] for key in (
                 'BOX64_DYNAREC_STRONGMEM','BOX64_DYNAREC_WEAKBARRIER','BOX64_DYNAREC_BIGBLOCK',
-                'BOX64_DYNAREC_SAFEFLAGS','BOX64_SHOWSEGV','BOX64_SHOWBT','WINEDEBUG')},
+                'BOX64_DYNAREC_SAFEFLAGS','BOX64_SHOWSEGV','BOX64_SHOWBT','WINEDEBUG','FNA_WIN32_IGNORE_WM_PAINT')},
             'validation':'Experimental mitigation; native crash cause not established',
         })
         return env

@@ -42,7 +42,7 @@ public final class ClientActivity extends Activity {
                 (launch!=null&&launch.optBoolean("system_dinput8_loaded")?" · system DirectInput loaded":"")+"\nLayer "+controller.layerLabel()+display.measure(launch));
             if(launch!=null&&launch.has("error")&&!failureShown&&hasWindowFocus()&&!isFinishing()) {
                 failureShown=true;controller.capture(false);display.input.releaseAll();setMenuOpen(true);
-                new AlertDialog.Builder(ClientActivity.this).setTitle("Client startup failed").setMessage(launch.optString("error"))
+                new AlertDialog.Builder(ClientActivity.this).setTitle(launch.optBoolean("client_started")?"Client stopped unexpectedly":"Client startup failed").setMessage(launch.optString("error"))
                     .setPositiveButton("Back to Client",(dialog,which)->finish()).setCancelable(false).show();
             }
         }catch(Exception e){status.setText(e.getMessage());}
@@ -128,6 +128,10 @@ public final class ClientActivity extends Activity {
     private void fallbackPresentation(String reason){
         if(!nativeActive)return;nativeActive=false;presentationFallback=reason;
         if(nativeDisplay!=null){nativeDisplay.close();nativeDisplay.setVisibility(View.GONE);}
+        // Supervisor reports the client error before closing its frame bridge.
+        // That expected EOF is not a live display failure requiring fallback.
+        if(failureShown||!runtime.alive())return;
+        try{JSONObject launch=runtime.state().optJSONObject("launch");if(launch!=null&&launch.has("error"))return;}catch(Exception ignored){}
         display.resize(display.frameWidth,display.frameHeight);
         display.send(r->r.request(false));display.invalidate();
         Toast.makeText(this,"Using current display: "+reason,Toast.LENGTH_LONG).show();
