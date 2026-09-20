@@ -8,8 +8,8 @@ android {
         applicationId 'io.github.russianranger.uomemento.recovery'
         minSdk 26
         targetSdk 35
-        versionCode 12
-        versionName '0.1.11'
+        versionCode 13
+        versionName '0.1.12'
         ndk { abiFilters 'arm64-v8a' }
     }
     buildTypes { release { minifyEnabled false } }
@@ -25,5 +25,5 @@ android {
     packaging { jniLibs { useLegacyPackaging true; keepDebugSymbols += ['**/libproot.so', '**/libproot-loader.so'] } }
     sourceSets { main { assets.srcDir '../backend-assets' } }
 }
-tasks.register('prepareBackend', Copy) { from '../backend'; include '*.py', '*.cs'; into '../backend-assets' }
+tasks.register('prepareBackend', Copy) { from '../backend'; include '*.py', '*.cs', '*.b64'; into '../backend-assets' }
 tasks.named('preBuild').configure { dependsOn 'prepareBackend' }

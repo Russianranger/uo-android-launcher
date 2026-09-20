@@ -1,14 +1,14 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.1.11
+## Updating Recovery to 0.1.12
 
-Install the 0.1.11 APK over **UO Memento Recovery** after saving/stopping the realm and stopping the client. Keep app data. No runtime download, server rebuild or client reimport is required.
+Install over **UO Memento Recovery** after saving/stopping the realm and stopping the client. Keep app data. No runtime download, server rebuild or client reimport is required.
 
-The latest 0.1.10 log records a collection-modified exception in TazUO's `DrawRenderList` after about 15 minutes of process runtime. This update makes FNA handle Windows repaint events through its game loop, preventing its immediate paint callback from reentering an active draw and invalidating the render-list enumerator. A Wine regression uses TazUO's pinned FNA source and actual native libraries to reproduce that mechanism and check the mitigation. The device's exact triggering event and long-session stability still require validation. See [the evidence and verification limits](docs/RELEASE-NOTES.md).
+**This is a diagnostic update, not a confirmed crash fix.** The 0.1.11 repaint change did not resolve the render-list crash. The uploaded DLLs and matching symbols identify the exact TazUO 5.2 build. The optional **Render crash tracing** control instruments two methods in that recognized DLL to record list versions and overlapping writes at failure. It preserves the original exception and backs up the original DLL. Turn tracing off and relaunch to restore it. Unknown client builds are not patched.
 
-Leave **SDL Vulkan resource fixes ON**, **Memory compatibility OFF**, and **Detailed client diagnostics OFF**. Use Turnip, Native Surface, 60 FPS and 1280×720. The **1098×720 world view** leaves **182 pixels** on the right for gumps. Controller mappings, saves, profiles and game data remain intact. Disable the SDL option and relaunch to restore its original backed-up library.
+For the next diagnostic run, enable **Render crash tracing** and keep **Detailed client diagnostics OFF**, **Memory compatibility OFF**, and **SDL Vulkan resource fixes ON**. Retain Turnip, Native Surface and **1280×720 with the 1098×720 world view**, leaving 182 pixels for gumps. Export Journal support logs after a failure. See [the exact-binary investigation](docs/CRASH-0.1.11-INVESTIGATION.md) and [release verification limits](docs/RELEASE-NOTES.md).
 
-0.1.9's missing-module startup fix and the packaged-APK import gate are retained. The user's [Bannerhub configuration](docs/RUNTIME-COMPARISON.md) uses FEX/ARM64X Wine; this release still uses Box64/x64 Wine and does not claim to reproduce that stack.
+Controller mappings, saves and profiles are preserved. The user's [Bannerhub configuration](docs/RUNTIME-COMPARISON.md) uses FEX/ARM64X Wine; this release retains the existing Box64/x64 Wine runtime.
 
 ## 0.1.1 recovery build
 

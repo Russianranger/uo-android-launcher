@@ -11,7 +11,7 @@ import java.util.zip.*;
 public final class ClientRuntimeAssetsHostTest {
     static final String IMPORT_PROBE="import pathlib,sys; "
         +"root=pathlib.Path(sys.argv[1]).resolve(); sys.path.insert(0,str(root)); "
-        +"import uo_client_runner,client_health,client_graphics,client_audio,client_presentation,uo_content,log_retention; "
+        +"import uo_client_runner,client_health,client_render_trace,client_graphics,client_audio,client_presentation,uo_content,log_retention; "
         +"assert pathlib.Path(uo_client_runner.__file__).parent.resolve()==root; "
         +"assert client_graphics.digest(root/client_graphics.ASSET)==client_graphics.FIXED_SDL; "
         +"print('DEPLOYED_CLIENT_IMPORT_OK',flush=True)";

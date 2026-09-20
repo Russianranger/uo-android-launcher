@@ -10,6 +10,7 @@ import time
 import client_audio
 import client_presentation
 import client_graphics
+import client_render_trace
 from client_health import ClientHealth
 from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, client_binary_report
 
@@ -155,7 +156,9 @@ class Supervisor:
         if not isinstance(graphics_fixes,bool):raise ValueError('Invalid SDL graphics fixes option')
         report['sdl_graphics']=client_graphics.prepare(CLIENT,info,self.root,
             graphics_fixes and self.request['renderer']=='turnip')
-        self.update(sdl_graphics=report['sdl_graphics'])
+        report['render_trace']=client_render_trace.prepare(CLIENT,info,self.root,
+            self.request.get('render_trace',False))
+        self.update(sdl_graphics=report['sdl_graphics'],render_trace=report['render_trace'])
         renderer_settings(CLIENT,info,self.request['renderer'])
         report['graphics_driver']='Vulkan' if self.request['renderer']=='turnip' else 'OpenGL'
         if self.request.get('gump_space',False):
@@ -165,9 +168,8 @@ class Supervisor:
 
     def client_environment(self):
         env=self.dotnet_environment('client-dotnet-host.log')
-        # FNA's Windows event filter can call RedrawWindow inside an active
-        # Draw, clearing TazUO's render lists under their foreach enumerators.
-        # Queue exposed-window redraws through FNA's normal game-loop polling.
+        # Retain the FNA hint, but TazUO replaces that filter. It did not solve
+        # the observed render-list crash; see the exact-binary investigation.
         env['FNA_WIN32_IGNORE_WM_PAINT']='1'
         if self.status['memory_compatibility']:
             env.update(BOX64_DYNAREC_STRONGMEM='3',BOX64_DYNAREC_WEAKBARRIER='0')
@@ -178,6 +180,12 @@ class Supervisor:
             rotate(LOGS/'client-managed.log')
             env.update(DOTNET_STARTUP_HOOKS='Z:'+str(hook).replace('/','\\'),
                        MEMENTO_MANAGED_LOG='Z:\\logs\\client-managed.log')
+        if self.status.get('render_trace',{}).get('active'):
+            hook=self.root/client_render_trace.HELPER
+            trace_hook='Z:'+str(hook).replace('/','\\')
+            existing=env.get('DOTNET_STARTUP_HOOKS')
+            env['DOTNET_STARTUP_HOOKS']=trace_hook+(';' + existing if existing else '')
+            env['MEMENTO_RENDER_TRACE']='1'
         # Wine handles SIGSEGV before managed observers see fatal native faults.
         # Print Box64 fault PCs/registers, plus Wine's loaded module bases for
         # address attribution. Avoid rolling-call traces and native stack walks
@@ -188,7 +196,8 @@ class Supervisor:
             'managed_diagnostics':self.status['managed_diagnostics'],
             'external_health_log':'client-health.log',
             'scope':'game_launch_only',
-            'window_repaint_policy':'game_loop_only',
+            'window_repaint_policy':'fna_hint_set_client_filter_unverified',
+            'render_trace':self.status.get('render_trace',{}),
             'attempt_started_utc':self.status['attempt_started_utc'],
             'environment':{key:env[key] for key in (
                 'BOX64_DYNAREC_STRONGMEM','BOX64_DYNAREC_WEAKBARRIER','BOX64_DYNAREC_BIGBLOCK',

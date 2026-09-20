@@ -76,6 +76,7 @@ final class ClientRuntime {
             request.put("gump_space",gumpSpace);
             request.put("client_memory_compatibility",options.optBoolean("client_memory_compatibility",false));
             request.put("managed_diagnostics",options.optBoolean("managed_diagnostics",false));
+            request.put("render_trace",options.optBoolean("render_trace",false));
             request.put("sdl_graphics_fixes",options.optBoolean("sdl_graphics_fixes",true));
             if(mode.equals("client")){
                 JSONObject info=json(new File(client,"memento-client.json"));

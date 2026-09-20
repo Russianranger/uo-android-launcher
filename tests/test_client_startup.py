@@ -23,6 +23,19 @@ class StartupTests(unittest.TestCase):
         (runner.CLIENT/'settings.json').write_text('{}')
         for name in ('tiledata.mul','map0.mul','cliloc.enu'):(runner.CLIENT/name).touch()
 
+    def test_render_trace_only_preloads_helper_for_a_verified_patch(self):
+        supervisor=runner.Supervisor(self.request)
+        supervisor.root=runner.SESSION
+        self.assertNotIn('DOTNET_STARTUP_HOOKS',supervisor.client_environment())
+        supervisor.status['render_trace']={'active':True}
+        env=supervisor.client_environment()
+        self.assertEqual(env['MEMENTO_RENDER_TRACE'],'1')
+        self.assertIn('Memento.RenderTrace.dll',env['DOTNET_STARTUP_HOOKS'])
+        self.assertNotIn('DOTNET_STARTUP_HOOKS',supervisor.setup_environment())
+        supervisor.status['managed_diagnostics']=True
+        (supervisor.root/'Memento.Diagnostics.dll').touch()
+        self.assertIn(';',supervisor.client_environment()['DOTNET_STARTUP_HOOKS'])
+
     def test_prefix_upgrade_repairs_once_and_failed_check_retries(self):
         marker=runner.PREFIX/'memento-prefix-ready';marker.touch() # v0.1.0 marker
         (runner.PREFIX/'system.reg').touch()
