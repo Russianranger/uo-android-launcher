@@ -23,13 +23,13 @@
 static int xerror;
 static int error_handler(Display *d,XErrorEvent *e){(void)d;xerror=e->error_code;return 0;}
 static uint64_t now_ns(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (uint64_t)t.tv_sec*1000000000+t.tv_nsec;}
-struct frame_stats {uint64_t since,frames,capture_ns,send_ns,pace_ns,calls,bytes,requests,captures,idle,duplicates;};
+struct frame_stats {uint64_t since,frames,capture_ns,send_ns,pace_ns,calls,bytes,requests,captures,idle,duplicates,window_queries,cursor_queries,pointer_queries,query_ns;};
 static void report(struct frame_stats *s,int final){
     uint64_t now=now_ns();if(!s->requests||(!final&&now-s->since<5000000000ull))return;
     double frames=s->frames?(double)s->frames:1,requests=(double)s->requests,captures=s->captures?(double)s->captures:1;
-    fprintf(stderr,"{\"transport\":\"batched-v2\",\"frames\":%llu,\"seconds\":%.3f,\"capture_ms_per_frame\":%.3f,\"send_ms_per_frame\":%.3f,\"pacing_ms_per_request\":%.3f,\"send_calls_per_frame\":%.3f,\"bytes_per_frame\":%.0f,\"requests\":%llu,\"captures\":%llu,\"idle_skips\":%llu,\"duplicate_skips\":%llu}\n",
+    fprintf(stderr,"{\"transport\":\"batched-v2\",\"frames\":%llu,\"seconds\":%.3f,\"capture_ms_per_frame\":%.3f,\"send_ms_per_frame\":%.3f,\"pacing_ms_per_request\":%.3f,\"send_calls_per_frame\":%.3f,\"bytes_per_frame\":%.0f,\"requests\":%llu,\"captures\":%llu,\"idle_skips\":%llu,\"duplicate_skips\":%llu,\"window_queries\":%llu,\"cursor_queries\":%llu,\"pointer_queries\":%llu,\"query_ms_per_request\":%.3f}\n",
         (unsigned long long)s->frames,(now-s->since)/1e9,s->capture_ns/1e6/captures,s->send_ns/1e6/frames,s->pace_ns/1e6/requests,s->calls/frames,s->bytes/frames,
-        (unsigned long long)s->requests,(unsigned long long)s->captures,(unsigned long long)s->idle,(unsigned long long)s->duplicates);fflush(stderr);
+        (unsigned long long)s->requests,(unsigned long long)s->captures,(unsigned long long)s->idle,(unsigned long long)s->duplicates,(unsigned long long)s->window_queries,(unsigned long long)s->cursor_queries,(unsigned long long)s->pointer_queries,s->query_ns/1e6/requests);fflush(stderr);
     memset(s,0,sizeof(*s));s->since=now;
 }
 static int unchanged(int fd,uint32_t *header,int shared,struct frame_stats *stats){
@@ -37,16 +37,16 @@ static int unchanged(int fd,uint32_t *header,int shared,struct frame_stats *stat
     for(int i=0;i<8;i++)wire[i]=htonl(header[i]);
     uint64_t calls=0;int result=trasc_send_all(fd,wire,sizeof(wire),&calls);report(stats,0);return result;
 }
-static void cursor(Display *d,XImage *image){
-    XFixesCursorImage *c=XFixesGetCursorImage(d);if(!c)return;
-    int left=(int)c->x-c->xhot,top=(int)c->y-c->yhot;
+static void cursor(const XFixesCursorImage *c,int rx,int ry,XImage *image){
+    if(!c)return;
+    int left=rx-c->xhot,top=ry-c->yhot;
     for(unsigned y=0;y<c->height;y++)for(unsigned x=0;x<c->width;x++){
         int px=left+(int)x,py=top+(int)y;if(px<0||py<0||px>=image->width||py>=image->height)continue;
         uint32_t p=(uint32_t)c->pixels[y*c->width+x],alpha=p>>24;if(!alpha)continue;
         uint32_t *dst=(uint32_t *)(image->data+py*image->bytes_per_line)+px,v=*dst,result=0;
         for(unsigned shift=0;shift<24;shift+=8){unsigned value=((p>>shift)&255)+(((v>>shift)&255)*(255-alpha)+127)/255;result|=(value>255?255:value)<<shift;}
         *dst=result;
-    }XFree(c);
+    }
 }
 int main(int argc,char **argv){
     signal(SIGPIPE,SIG_IGN);
@@ -62,6 +62,7 @@ int main(int argc,char **argv){
     umask(0077);unlink(argv[1]);if(bind(listener,(struct sockaddr *)&addr,sizeof(addr))||listen(listener,1))return 4;
     int damage_event=0,damage_error=0,damage_ready=XDamageQueryExtension(d,&damage_event,&damage_error);
     Damage damage=damage_ready?XDamageCreate(d,DefaultRootWindow(d),XDamageReportNonEmpty):0;
+    XSelectInput(d,DefaultRootWindow(d),StructureNotifyMask);
     XFixesSelectCursorInput(d,DefaultRootWindow(d),XFixesDisplayCursorNotifyMask);
     fprintf(stderr,"Change tracking: %s; exact pixel comparison enabled\n",damage_ready?"XDamage":"periodic capture fallback");
     uint32_t sequence=0;fprintf(stderr,"TRASC native Surface bridge ready, cap=%d; X11 readback retained\n",fps);fflush(stderr);
@@ -71,20 +72,42 @@ int main(int argc,char **argv){
         XImage *image=NULL;XShmSegmentInfo shm={.shmid=-1};int shared=0,lastw=0,lasth=0;uint64_t last=0;
         unsigned char *packed=NULL,*previous=NULL;size_t packed_capacity=0,previous_size=0;
         uint64_t last_capture=0;int pointer_x=-1,pointer_y=-1;struct frame_stats stats={.since=now_ns()};
+        XWindowAttributes a;XFixesCursorImage *shape=NULL;
+        uint64_t last_window_query=0,last_cursor_query=0;
         unsigned char request;
         while(recv(fd,&request,1,0)==1&&request==1){
             uint64_t elapsed=now_ns()-last,interval=1000000000u/(unsigned)fps;
             uint64_t pacing=now_ns();if(last&&elapsed<interval){struct timespec wait={.tv_nsec=(long)(interval-elapsed)};while(nanosleep(&wait,&wait)&&errno==EINTR){}}stats.pace_ns+=now_ns()-pacing;last=now_ns();
             stats.requests++;
-            XWindowAttributes a;if(!XGetWindowAttributes(d,DefaultRootWindow(d),&a))break;
+            uint64_t querying=now_ns();
+            Window root,child;int rx=0,ry=0,wx=0,wy=0;unsigned mask=0;
+            XQueryPointer(d,DefaultRootWindow(d),&root,&child,&rx,&ry,&wx,&wy,&mask);stats.pointer_queries++;
+            int refresh_window=!last_window_query||querying-last_window_query>=2000000000ull;
+            int refresh_cursor=!shape||querying-last_cursor_query>=2000000000ull;
+            int dirty=!previous||rx!=pointer_x||ry!=pointer_y;
+            pointer_x=rx;pointer_y=ry;
+            while(XPending(d)){
+                XEvent event;XNextEvent(d,&event);
+                if(damage_ready&&event.type==damage_event+XDamageNotify)dirty=1;
+                if(event.type==fixes_event+XFixesCursorNotify){dirty=1;refresh_cursor=1;}
+                if(event.type==ConfigureNotify&&event.xconfigure.window==DefaultRootWindow(d)){dirty=1;refresh_window=1;}
+            }
+            // Event-driven caches, with a two-second refresh as a safety net.
+            // Position still comes from every request, never the cached image.
+            if(refresh_window){
+                if(!XGetWindowAttributes(d,DefaultRootWindow(d),&a))break;
+                last_window_query=querying;stats.window_queries++;
+            }
+            if(refresh_cursor){
+                XFixesCursorImage *next=XFixesGetCursorImage(d);stats.cursor_queries++;
+                if(shape)XFree(shape);
+                shape=next;last_cursor_query=querying;dirty=1;
+            }
+            stats.query_ns+=now_ns()-querying;
             uint32_t header[8]={TRASC_MAGIC,(uint32_t)a.width,(uint32_t)a.height,(uint32_t)a.width*4,0,++sequence,(uint32_t)a.width*a.height*4,0};
             if(!trasc_frame_valid(header))break;
-            Window root,child;int rx=0,ry=0,wx=0,wy=0;unsigned mask=0;
-            XQueryPointer(d,DefaultRootWindow(d),&root,&child,&rx,&ry,&wx,&wy,&mask);
             int resized=a.width!=lastw||a.height!=lasth;
-            int dirty=!previous||resized||rx!=pointer_x||ry!=pointer_y;
-            pointer_x=rx;pointer_y=ry;
-            while(XPending(d)){XEvent event;XNextEvent(d,&event);if((damage_ready&&event.type==damage_event+XDamageNotify)||event.type==fixes_event+XFixesCursorNotify)dirty=1;}
+            dirty|=resized;
             if(damage_ready&&!dirty&&now_ns()-last_capture<2000000000ull){stats.idle++;if(unchanged(fd,header,shared,&stats))break;continue;}
             if(damage_ready)XDamageSubtract(d,damage,None,None);
 
@@ -117,7 +140,7 @@ int main(int argc,char **argv){
             if(shared){if(!XShmGetImage(d,DefaultRootWindow(d),image,0,0,AllPlanes))break;}
             else {if(image)XDestroyImage(image);image=XGetImage(d,DefaultRootWindow(d),0,0,(unsigned)a.width,(unsigned)a.height,AllPlanes,ZPixmap);}
             if(!image||xerror||image->bits_per_pixel!=32||image->byte_order!=LSBFirst||image->red_mask!=0xff0000||image->green_mask!=0xff00||image->blue_mask!=0xff)break;
-            cursor(d,image);if(xerror)break;
+            cursor(shape,rx,ry,image);if(xerror)break;
             uint64_t captured=now_ns();header[4]=(uint32_t)((captured-capture)/1000);header[7]=(uint32_t)shared;
             uint32_t wire[8];for(int i=0;i<8;i++)wire[i]=htonl(header[i]);
             stats.capture_ns+=captured-capture;
@@ -131,6 +154,7 @@ int main(int argc,char **argv){
             stats.frames++;stats.send_ns+=now_ns()-sending;stats.calls+=calls;stats.bytes+=header[6];report(&stats,0);
         }
         if(image){if(shared){XShmDetach(d,&shm);XSync(d,False);shmdt(shm.shmaddr);image->data=NULL;}XDestroyImage(image);}
+        if(shape)XFree(shape);
         report(&stats,1);free(packed);free(previous);close(fd);
     }
     if(damage_ready)XDamageDestroy(d,damage);

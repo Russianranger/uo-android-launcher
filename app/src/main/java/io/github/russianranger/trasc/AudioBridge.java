@@ -66,13 +66,14 @@ final class AudioBridge implements AutoCloseable {
     }
     private final class Connection implements Runnable,AudioPcmSession.Sink {
         final LocalSocket socket;AudioTrack track;int capacity;boolean ended;
-        long submitted,nonzero,nextReport;boolean firstSignal;
+        long submitted,nonzero,totalNonzero,nextReport;boolean firstSignal;
+        final AudioDeliveryStats delivery=new AudioDeliveryStats();
         Connection(LocalSocket socket){this.socket=socket;}
         public void run(){
             AudioPcmSession session=new AudioPcmSession();
             try{session.run(socket.getInputStream(),socket.getOutputStream(),this);}
             catch(Exception e){if(!closed)record("stream_error="+e);}
-            finally{close();synchronized(connections){connections.remove(this);}record("stream_closed frames="+session.frames+" nonzero_samples="+session.nonzeroSamples);}
+            finally{close();synchronized(connections){connections.remove(this);}record("stream_closed frames="+session.frames+" nonzero_samples="+totalNonzero);}
         }
         public synchronized void configure(int frames)throws IOException{capacity=frames;reset();}
         public synchronized void reset()throws IOException {
@@ -85,6 +86,7 @@ final class AudioBridge implements AutoCloseable {
                 .setTransferMode(AudioTrack.MODE_STREAM).setBufferSizeInBytes(Math.max(minimum,capacity*4)).build();
             if(track.getState()!=AudioTrack.STATE_INITIALIZED)throw new IOException("Could not initialize Android audio");
             configureBuffer();submitted=nonzero=nextReport=0;firstSignal=false;
+            delivery.playing(false);delivery.take();
             track.setVolume(volume);
             record("stream_config producer_frames="+capacity+" minimum_bytes="+minimum+
                 " buffer_frames="+track.getBufferSizeInFrames()+" allocated_frames="+track.getBufferCapacityInFrames()+
@@ -97,11 +99,11 @@ final class AudioBridge implements AutoCloseable {
                 public int startThreshold(int frames){return Build.VERSION.SDK_INT>=31?track.setStartThresholdInFrames(frames):track.getBufferSizeInFrames();}
             },capacity,Build.VERSION.SDK_INT>=31);
         }
-        public synchronized void start()throws IOException{if(track!=null){configureBuffer();track.play();record("stream_start queued_frames="+submitted+" start_frames="+threshold());}}
-        public synchronized void stop(){if(track!=null){report("stream_stop");track.pause();track.flush();submitted=nonzero=0;}}
+        public synchronized void start()throws IOException{if(track!=null){configureBuffer();track.play();delivery.playing(true);record("stream_start queued_frames="+submitted+" start_frames="+threshold());}}
+        public synchronized void stop(){if(track!=null){report("stream_stop");track.pause();track.flush();submitted=nonzero=0;delivery.playing(false);}}
         private void report(String event){record(event+" written="+submitted+" played="+Integer.toUnsignedLong(track.getPlaybackHeadPosition())+
             " queued_frames="+Math.max(0,submitted-Integer.toUnsignedLong(track.getPlaybackHeadPosition()))+
-            " nonzero_samples="+nonzero+" underruns="+track.getUnderrunCount()+" state="+track.getPlayState()+" volume="+volume);}
+            " nonzero_samples="+nonzero+" underruns="+track.getUnderrunCount()+" state="+track.getPlayState()+" volume="+volume+delivery.take());}
         public synchronized int position()throws IOException {
             if(track==null)throw new IOException("Audio stream closed");
             long now=android.os.SystemClock.elapsedRealtime();
@@ -114,8 +116,10 @@ final class AudioBridge implements AutoCloseable {
         }
         public synchronized int write(byte[] bytes,int length)throws IOException {
             if(track==null)throw new IOException("Audio stream closed");
+            long began=System.nanoTime();
             int accepted=track.write(bytes,0,length,AudioTrack.WRITE_NON_BLOCKING);
-            if(accepted>0){submitted+=accepted/4;for(int i=0;i+1<accepted;i+=2)if(bytes[i]!=0||bytes[i+1]!=0)nonzero++;
+            delivery.write(began,System.nanoTime(),length,accepted);
+            if(accepted>0){submitted+=accepted/4;for(int i=0;i+1<accepted;i+=2)if(bytes[i]!=0||bytes[i+1]!=0){nonzero++;totalNonzero++;}
                 if(nonzero>0&&!firstSignal){firstSignal=true;record("stream_first_signal written="+submitted);}}
             return accepted;
         }

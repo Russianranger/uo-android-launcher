@@ -1,22 +1,24 @@
-# UO Memento Recovery 0.2.4
+# UO Memento Recovery 0.2.5
 
-Targets long loading times, uneven FPS and garbled audio while retaining the device-tested native Wine/FEX runtime.
+A narrow efficiency update on the successful 0.2.4 baseline. The Thor user reported substantially improved loading and sound, with temperatures in the low 50°C range on 0.2.4; further device gains from this update are not yet measured.
 
-## Install and compare
+## Install
 
-Install **UO-Memento-0.2.4-Recovery.apk** over the existing Recovery app after stopping the client and saving/stopping the realm. Keep app data. No runtime reinstall, client reimport or world migration is required.
+Stop the client, save/stop the realm, then install **UO-Memento-0.2.5-Recovery.apk** over Recovery. Keep app data. No runtime reinstall, client reimport or world migration is required.
 
-Use **Client acceleration** on, **WASAPI · recommended**, **Turnip / Native Surface**, **30 FPS · cooler**, and **1280×720 / 1098×720 world + gump space**. The two new options default to acceleration on and WASAPI. Existing display, layout, controller and tracing preferences persist.
+Keep **Client acceleration**, **WASAPI**, **Turnip / Native Surface**, **30 FPS** and **1280×720 / 1098×720 world + gump space**. Wine/FEX, drivers, controls, audio format, the 40 ms producer buffer and Android start threshold are unchanged.
 
 ## Changes
 
-- Allow PRoot's supported-kernel syscall acceleration for the client. Previously every client launch forced it off. PRoot retains its built-in fallback when unavailable; the new Client acceleration switch restores the previous full-trace mode for comparison. The realm's execution policy is unchanged.
-- Use WASAPI instead of forcing DirectSound. Set both SDL 2 and SDL 3 driver hints so imported audio libraries use the same selection. DirectSound remains selectable. The ALSA/AudioTrack bridge, 48 kHz stereo format and 0.2.2 buffering policy are retained.
-- Reuse a healthy Wine prefix after validating its ready revision, all three registry hives and kernel32. Skip repeated wineboot/command/shutdown cycles. Corrupt or incomplete prefixes still take the preservation and repair path introduced in 0.2.3.
-- Record startup phase elapsed times, requested audio backend and acceleration selection. The PRoot log records when acceleration is actually observed.
+- Remove the second scan of every accepted audio sample. Preserve progress and whole-session signal counters.
+- Add interval audio delivery-gap, write-duration and partial/zero-write counters to support logs. Pauses and initial priming are excluded from gap measurements. No extra timers or per-write log output.
+- Cache X11 window attributes and cursor images. Refresh on resize/cursor notifications and every two seconds as a fallback. Continue checking pointer position on every display request, with the existing full-pixel capture, exact duplicate comparison and frame limits.
+- Build and package the updated ARM64 display bridge, with checksum verification and real X11 tests for shared-memory and fallback capture, cursor movement/shape, clipping, resize and reconnect.
 
-## Verification and limits
+## Music optimization pending one file
 
-Release gates cover prefix reuse and interrupted-file recovery, option defaults/persistence, Android build/signature continuity, and the exact retained ARM64 Wine/FEX runtime in both compatibility and accelerated PRoot modes. Runtime probes exercise .NET 10 JIT/GC, Vulkan texture lifetime and Windows WASAPI through the real ALSA bridge. Synthetic 440/660 Hz stereo tones check playback rate, channel separation, level and duration against a clocked protocol sink.
+The source change in `patches/tazuo-music-cache.patch` performs one recursive music-directory enumeration per load, preserving existing filename matching, ordering, ambiguity warnings and missing-track behavior. It is **not applied by this APK**. The loader belongs to `ClassicUO.Assets.dll`, not the earlier uploaded `TazUO.dll`. The exact imported Assets DLL is needed to generate and verify its reversible binary patch; substituting a different upstream build would change more of the working client.
 
-The probes do not reproduce Android speaker output, a live Memento world, recording or Thor thermals. Improvements must be measured on the device; this is not a claim that audio distortion is eliminated or that the old setup's low-50°C range has been reached. See [session evidence](OPTIMIZATION-0.2.4.md).
+## Verification limits
+
+Automated gates cover the audio protocol, delivery counters, X11 capture, Android build/lint/signing continuity, existing recovery paths and the retained ARM64 Wine/FEX runtime in both PRoot modes. They do not measure Thor thermals or Android speaker quality. Compare a normal session and export support logs after stopping.

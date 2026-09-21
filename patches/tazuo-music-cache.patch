@@ -1,0 +1,40 @@
+--- a/src/ClassicUO.Assets/SoundsLoader.cs
++++ b/src/ClassicUO.Assets/SoundsLoader.cs
+@@ -21,6 +21,7 @@
+         public const int MAX_SOUND_DATA_INDEX_COUNT = 0xFFFF;
+ 
+         private UOFile _file;
++        private string[] _musicFiles;
+ 
+         public SoundsLoader(UOFileManager fileManager) : base(fileManager)
+         {
+@@ -28,6 +29,7 @@
+ 
+         public override void Load()
+         {
++            _musicFiles = null;
+             string path = FileManager.GetUOFilePath("soundLegacyMUL.uop");
+ 
+             if (FileManager.IsUOPInstallation && File.Exists(path))
+@@ -265,7 +267,7 @@
+             // are case sensitive.
+             var pattern = new Regex($"^{name}.mp3", RegexOptions.IgnoreCase);
+             //string[] fileList = Directory.GetFiles(dir, "*.mp3", SearchOption.AllDirectories).Where(path => pattern.IsMatch(Path.GetFileName(path))).ToArray();
+-            string[] fileList = Directory.GetFiles(dir, "*.mp3", SearchOption.AllDirectories);
++            string[] fileList = _musicFiles ??= Directory.GetFiles(dir, "*.mp3", SearchOption.AllDirectories);
+             fileList = Array.FindAll(fileList, path => pattern.IsMatch(Path.GetFileName(path)));
+ 
+             if (fileList != null && fileList.Length != 0)
+@@ -304,7 +306,11 @@
+             return false;
+         }
+ 
+-        public override void ClearResources() => _musicData.Clear();
++        public override void ClearResources()
++        {
++            _musicFiles = null;
++            _musicData.Clear();
++        }
+     }
+ }
+ 
