@@ -17,6 +17,9 @@ public final class ClientRuntimeAssetsHostTest {
         +"audio=json.loads((root/'audio-bundle.json').read_text()); "
         +"assert audio['buffer_policy']==3 and audio['minimum_period_frames']==32 and audio['minimum_buffer_frames']==64; "
         +"assert hashlib.sha256((root/'libasound_module_pcm_trasc.so').read_bytes()).hexdigest()==audio['sha256']; "
+        +"presentation=json.loads((root/'presentation-bundle.json').read_text()); "
+        +"assert presentation['metadata_cache']==1; "
+        +"assert hashlib.sha256((root/'x11-frame-bridge').read_bytes()).hexdigest()==presentation['sha256']; "
         +"print('DEPLOYED_CLIENT_IMPORT_OK',flush=True)";
 
     static String probe(Path deployed,boolean expectSuccess)throws Exception {

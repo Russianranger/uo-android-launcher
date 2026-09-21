@@ -10,9 +10,11 @@ files={f'assets/{name}':root/'backend-assets'/name for name in ('libasound_modul
 manifest=json.loads(files['assets/audio-bundle.json'].read_text())
 assert hashlib.sha256(files['assets/libasound_module_pcm_trasc.so'].read_bytes()).hexdigest()==manifest['sha256']
 presentation=json.loads(files['assets/presentation-bundle.json'].read_text())
+assert presentation['metadata_cache']==1
 assert hashlib.sha256(files['assets/x11-frame-bridge'].read_bytes()).hexdigest()==presentation['sha256']
 updated=archive.with_suffix('.new.zip')
 with zipfile.ZipFile(archive) as source,zipfile.ZipFile(updated,'w',zipfile.ZIP_DEFLATED) as dest:
+    if set(files)-set(source.namelist()):raise ValueError('Retained archive lacks expected bridge entries')
     for info in source.infolist():
         dest.writestr(info,files[info.filename].read_bytes() if info.filename in files else source.read(info))
 updated.replace(archive)

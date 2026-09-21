@@ -72,7 +72,7 @@ int main(int argc,char **argv){
         XImage *image=NULL;XShmSegmentInfo shm={.shmid=-1};int shared=0,lastw=0,lasth=0;uint64_t last=0;
         unsigned char *packed=NULL,*previous=NULL;size_t packed_capacity=0,previous_size=0;
         uint64_t last_capture=0;int pointer_x=-1,pointer_y=-1;struct frame_stats stats={.since=now_ns()};
-        XWindowAttributes a;XFixesCursorImage *shape=NULL;
+        XWindowAttributes a={0};XFixesCursorImage *shape=NULL;
         uint64_t last_window_query=0,last_cursor_query=0;
         unsigned char request;
         while(recv(fd,&request,1,0)==1&&request==1){
