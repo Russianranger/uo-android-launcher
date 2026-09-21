@@ -12,6 +12,7 @@ import client_presentation
 import client_graphics
 import client_render_trace
 import client_runtime
+import client_prefix
 from client_health import ClientHealth, prepare_render_progress
 from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, frame_settings, client_binary_report, checkpoint_client_settings
 
@@ -125,13 +126,31 @@ class Supervisor:
 
     def prepare_prefix(self):
         marker=PREFIX/'memento-prefix-ready'
-        ready=(marker.is_file() and marker.read_text()==PREFIX_REVISION
-               and (PREFIX/'system.reg').is_file() and (PREFIX/'drive_c/windows/system32/kernel32.dll').is_file())
+        registry=client_prefix.inspect(PREFIX)
+        ready=(marker.is_file() and marker.read_bytes()==PREFIX_REVISION.encode()
+               and all(item['state']=='valid' for item in registry.values())
+               and (PREFIX/'drive_c/windows/system32/kernel32.dll').is_file())
         marker.unlink(missing_ok=True)
+        health={'before':registry,'actions':{}}
         self.update('preparing_wine',display_ready=True,prefix_update='reuse' if ready else 'repair')
+        if any(item['state']!='valid' for item in registry.values()):
+            self.stop_prefix_server()
+            health=client_prefix.recover(PREFIX)
+        write_json(LOGS/'client-prefix-health.json',health)
+        self.update(prefix_registry=health)
         self.run(WINE+['wineboot','-i' if ready else '-u'],timeout=240,env=self.setup_environment())
         self.run(WINE+['cmd','/d','/c','exit','0'],log='client-wine-check.log',timeout=60)
+        # Wine saves registry files on server exit. Do not checkpoint live hives
+        # or trust a stale ready marker left behind by a device reset.
+        self.stop_prefix_server()
+        health['after']=client_prefix.inspect(PREFIX)
+        write_json(LOGS/'client-prefix-health.json',health)
+        client_prefix.checkpoint(PREFIX)
         marker.write_text(PREFIX_REVISION)
+
+    def stop_prefix_server(self):
+        self.run(WINESERVER+['-k'],log='client-prefix-stop.log',timeout=15)
+        self.run(WINESERVER+['-w'],log='client-prefix-wait.log',timeout=15)
 
     def setup_environment(self):
         # Suppress wineboot's Mono installer without disabling the managed DLL

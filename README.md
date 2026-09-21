@@ -1,14 +1,14 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.2.2
+## Updating Recovery to 0.2.3
 
-This update repairs startup after interrupted TazUO settings writes and reverts the 0.2.1 audio buffering experiment. It retains the stable **native ARM64 Wine + FEX ARM64EC** runtime and the 30 FPS frame cap.
+This update repairs damaged Wine registry files after a hard reset. In the supplied 0.2.2 logs, TazUO settings recovery succeeded; Wine then stopped on an invalid `system.reg`, producing a misleading “32-bit wineserver” message. The installed Wine binary is still native ARM64.
 
-1. Save/stop the realm and stop the client, then install the new APK over **UO Memento Recovery**. Keep app data.
-2. **No runtime reinstall or client reimport is needed when a valid settings backup exists.** Launch automatically restores the newest valid backup, preserving the damaged file locally. Settings changed after that backup may need to be set again.
-3. Use **Turnip / Native Surface**, **30 FPS · cooler**, and **1280×720 with the 1098×720 world view**. Keep SDL replacement, render tracing and detailed diagnostics off.
+1. Save/stop the realm and stop the client, then install the new APK over **UO Memento Recovery**, keeping app data.
+2. Launch normally. The app preserves damaged registry hives and restores valid checkpoints where available. Otherwise Wine rebuilds the damaged hives. Healthy registry files, `drive_c`, client files, profiles, mappings and realm saves remain in place.
+3. **No runtime reinstall or client reimport is needed.** Initial registry repair may take longer than a normal launch. Keep **Turnip / Native Surface**, **30 FPS · cooler**, and **1280×720 with the 1098×720 world view**.
 
-The audio changes return buffering and worker scheduling to 0.2.0 behavior. Audio clarity and the reported device-wide recording freeze still need device validation; this release does not claim to fix the recorder freeze. See [release notes](docs/RELEASE-NOTES.md).
+The 0.2.2 settings recovery and audio rollback are retained. This release makes no additional audio, renderer or translator changes. See [release notes](docs/RELEASE-NOTES.md).
 
 ## 0.1.1 recovery build
 

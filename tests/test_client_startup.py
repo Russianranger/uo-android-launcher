@@ -21,6 +21,8 @@ class StartupTests(unittest.TestCase):
             patcher=patch.object(runner,name,path);patcher.start();self.addCleanup(patcher.stop)
         self.request={'runtime_backend':runner.RUNTIME_ID,'mode':'client','renderer':'software','resolution':'1280x720','display_fps':60,
                       'audio':False,'client':{'self_contained':True,'executable':'TazUO.exe','settings':'settings.json','assets':'.'}}
+        for name in ('system.reg','userdef.reg','user.reg'):
+            (runner.PREFIX/name).write_text('WINE REGISTRY Version 2\n\n#arch=win64\n\n[Software]\n')
         (runner.CLIENT/'TazUO.exe').touch()
         (runner.CLIENT/'settings.json').write_text('{}')
         for name in ('tiledata.mul','map0.mul','cliloc.enu'):(runner.CLIENT/name).touch()
