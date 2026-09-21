@@ -1,14 +1,16 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.1.13
+## Updating Recovery to 0.1.14
 
 Install over **UO Memento Recovery** after saving/stopping the realm and stopping the client. Keep app data. No runtime download, server rebuild or client reimport is required.
 
-The game now uses Box64's jump table for function returns (`BOX64_DYNAREC_CALLRET=0`). The bundled translator predates an upstream fix for returning into recycled translated code. This workaround avoids that optimization without changing Wine setup or .NET JIT/GC settings. It is a candidate stability mitigation; the Thor crash's root cause is not yet established.
+The latest 0.1.13 run restored the boat's color but froze shortly after world entry. The client main thread stopped advancing while the display bridge stayed responsive; the Box64 return workaround was active. **This release improves freeze diagnosis, and is not a confirmed stability fix.**
 
-The VirGL comparison entered the world but showed a white ship hull and ended in an access violation in DrawRenderList. For the next run, select **Turnip 26 · Vulkan**, **Native Surface**, **1280×720 with the 1098×720 world view**, **SDL Vulkan resource fixes ON**, **Render crash tracing ON**, **Detailed client diagnostics OFF**, and **Memory compatibility OFF**. The return workaround applies automatically. Export Journal support logs after a failure. See [the new investigation](docs/CRASH-0.1.12-VIRGL.md) and [release verification limits](docs/RELEASE-NOTES.md).
+Render crash tracing now publishes the last render-list boundary to a small shared record. The launcher samples it into support logs even if game logging stops. The tracer no longer walks or formats exception stacks before recording failures. The imported client patch remains the same; turning tracing off restores the original DLL.
 
-Controller mappings, saves and profiles are preserved. The user's [Bannerhub configuration](docs/RUNTIME-COMPARISON.md) uses FEX/ARM64X Wine; this release retains the existing Box64/x64 Wine runtime.
+For the next run, keep **Turnip 26 · Vulkan**, **Native Surface**, **1280×720 with the 1098×720 world view**, **SDL Vulkan resource fixes ON**, **Render crash tracing ON**, **Detailed client diagnostics OFF**, and **Memory compatibility OFF**. If it freezes, wait about **30 seconds**, return to the launcher and export Journal support logs **before stopping or relaunching the client**. See [the freeze investigation](docs/FREEZE-0.1.13.md) and [release verification limits](docs/RELEASE-NOTES.md).
+
+Controller mappings, saves, profiles and runtime settings are preserved. The user's [Bannerhub configuration](docs/RUNTIME-COMPARISON.md) uses FEX/ARM64X Wine; this release retains the existing Box64/x64 Wine runtime.
 
 ## 0.1.1 recovery build
 

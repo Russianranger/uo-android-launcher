@@ -11,7 +11,7 @@ import client_audio
 import client_presentation
 import client_graphics
 import client_render_trace
-from client_health import ClientHealth
+from client_health import ClientHealth, prepare_render_progress
 from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, client_binary_report
 
 SESSION=Path('/session')
@@ -64,6 +64,8 @@ class Supervisor:
         # game launch. Detailed in-process instrumentation is now opt-in.
         self.env.pop('DOTNET_STARTUP_HOOKS',None)
         self.env.pop('MEMENTO_MANAGED_LOG',None)
+        self.env.pop('MEMENTO_RENDER_TRACE',None)
+        self.env.pop('MEMENTO_RENDER_PROGRESS',None)
         renderer=request['renderer']
         if renderer=='turnip':
             write_json(SESSION/'turnip-icd.json',{'file_format_version':'1.0.0','ICD':{'library_path':str(self.root/'turnip-26.0.0.so'),'api_version':'1.3.0'}})
@@ -190,6 +192,12 @@ class Supervisor:
             existing=env.get('DOTNET_STARTUP_HOOKS')
             env['DOTNET_STARTUP_HOOKS']=trace_hook+(';' + existing if existing else '')
             env['MEMENTO_RENDER_TRACE']='1'
+            progress=SESSION/'render-progress.bin'
+            # This optional observer must not prevent an otherwise valid launch.
+            try:
+                prepare_render_progress(progress)
+                env['MEMENTO_RENDER_PROGRESS']='Z:'+str(progress).replace('/','\\')
+            except (OSError,ValueError):pass
         # Wine handles SIGSEGV before managed observers see fatal native faults.
         # Print Box64 fault PCs/registers, plus Wine's loaded module bases for
         # address attribution. Avoid rolling-call traces and native stack walks
@@ -270,21 +278,27 @@ class Supervisor:
             cwd=exe.parent
         env=self.client_environment() if request['mode']=='client' else self.env
         game=self.spawn(launch,'client-wine.log',cwd=cwd,env=env)
-        health=ClientHealth(game.pid,LOGS)
+        health=ClientHealth(game.pid,LOGS,render_progress=SESSION/'render-progress.bin'
+                           if env.get('MEMENTO_RENDER_PROGRESS') else None)
         started=time.monotonic()
         self.update('client_running' if request['mode']=='client' else 'wine_desktop',renderer_requested=request['renderer'],
                     compatibility='Device validation required',launcher_pid=game.pid,client_started=request['mode']=='client')
-        while not self.stopping():
-            if display.poll() is not None:raise RuntimeError('Embedded display exited')
-            code=game.poll()
-            if code is not None:
-                self.update(exit_code=code,client_seconds=round(time.monotonic()-started,2))
-                if code:raise RuntimeError('TazUO/Wine exited with code '+str(code)+'. Export logs for diagnosis.')
-                if request['mode']=='client' and time.monotonic()-started<15:
-                    raise RuntimeError('TazUO closed during startup (exit code 0). Export support logs from the Journal.')
-                break
-            health.sample()
-            time.sleep(.5)
+        try:
+            while not self.stopping():
+                if display.poll() is not None:raise RuntimeError('Embedded display exited')
+                code=game.poll()
+                if code is not None:
+                    self.update(exit_code=code,client_seconds=round(time.monotonic()-started,2))
+                    if code:raise RuntimeError('TazUO/Wine exited with code '+str(code)+'. Export logs for diagnosis.')
+                    if request['mode']=='client' and time.monotonic()-started<15:
+                        raise RuntimeError('TazUO closed during startup (exit code 0). Export support logs from the Journal.')
+                    break
+                health.sample()
+                time.sleep(.5)
+        finally:
+            # The mapped record survives the process. Keep its final boundary
+            # even when a crash happened between periodic health samples.
+            health.sample(force=True)
 
     def stop(self):
         try:subprocess.run(['/usr/local/bin/box64','/opt/wine/bin/wineserver','-k'],env=self.env,timeout=10,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
