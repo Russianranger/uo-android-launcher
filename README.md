@@ -1,12 +1,12 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.1.12
+## Updating Recovery to 0.1.13
 
 Install over **UO Memento Recovery** after saving/stopping the realm and stopping the client. Keep app data. No runtime download, server rebuild or client reimport is required.
 
-**This is a diagnostic update, not a confirmed crash fix.** The 0.1.11 repaint change did not resolve the render-list crash. The uploaded DLLs and matching symbols identify the exact TazUO 5.2 build. The optional **Render crash tracing** control instruments two methods in that recognized DLL to record list versions and overlapping writes at failure. It preserves the original exception and backs up the original DLL. Turn tracing off and relaunch to restore it. Unknown client builds are not patched.
+The game now uses Box64's jump table for function returns (`BOX64_DYNAREC_CALLRET=0`). The bundled translator predates an upstream fix for returning into recycled translated code. This workaround avoids that optimization without changing Wine setup or .NET JIT/GC settings. It is a candidate stability mitigation; the Thor crash's root cause is not yet established.
 
-For the next diagnostic run, enable **Render crash tracing** and keep **Detailed client diagnostics OFF**, **Memory compatibility OFF**, and **SDL Vulkan resource fixes ON**. Retain Turnip, Native Surface and **1280×720 with the 1098×720 world view**, leaving 182 pixels for gumps. Export Journal support logs after a failure. See [the exact-binary investigation](docs/CRASH-0.1.11-INVESTIGATION.md) and [release verification limits](docs/RELEASE-NOTES.md).
+The VirGL comparison entered the world but showed a white ship hull and ended in an access violation in DrawRenderList. For the next run, select **Turnip 26 · Vulkan**, **Native Surface**, **1280×720 with the 1098×720 world view**, **SDL Vulkan resource fixes ON**, **Render crash tracing ON**, **Detailed client diagnostics OFF**, and **Memory compatibility OFF**. The return workaround applies automatically. Export Journal support logs after a failure. See [the new investigation](docs/CRASH-0.1.12-VIRGL.md) and [release verification limits](docs/RELEASE-NOTES.md).
 
 Controller mappings, saves and profiles are preserved. The user's [Bannerhub configuration](docs/RUNTIME-COMPARISON.md) uses FEX/ARM64X Wine; this release retains the existing Box64/x64 Wine runtime.
 

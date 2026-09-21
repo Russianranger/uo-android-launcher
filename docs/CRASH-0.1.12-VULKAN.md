@@ -1,6 +1,6 @@
 # 0.1.12 world-entry Vulkan crash
 
-Status: native crash confirmed; origin of the invalid resource handle remains unresolved. No application/runtime change or new release accompanies this investigation.
+Status: native crash confirmed; origin of the invalid resource handle remains unresolved. The follow-up VirGL comparison also crashed; see [its investigation](CRASH-0.1.12-VIRGL.md) and the 0.1.13 workaround.
 
 ## Current attempt
 
@@ -60,4 +60,4 @@ Production code sets both TazUO `force_driver=1` and `FNA3D_FORCE_DRIVER=OpenGL`
 
 This is a diagnostic workaround, not an established stability or performance fix. A repeat of the managed-list exception under OpenGL would provide a useful independent trace. An OpenGL launch/texture failure should be reported as such rather than counted as a successful comparison.
 
-The full 1280x720 canvas and 1098x720 world remain requested. No server reset, client reimport, prefix repair, cache clearing, or new APK is needed for the comparison. Do not merge this documentation-only branch onto main while the release workflow still targets v0.1.12: that workflow republishes the same tag.
+The full 1280x720 canvas and 1098x720 world remain requested. No server reset, client reimport, prefix repair, cache clearing, or new APK is needed for the comparison. This historical comparison has now been completed; do not repeat it as the next recommended test.
