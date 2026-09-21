@@ -89,6 +89,12 @@ jobs:
           sudo apt-get install -y gcc-mingw-w64-x86-64
       - name: Verify retained runtime on ARM64 and PRoot
         run: bash scripts/check-fex-runtime.sh
+      - name: Make container diagnostics readable by the artifact uploader
+        if: always()
+        run: |
+          if [ -d runtime-work/fex/logs ]; then
+            sudo chown -R -- "$(id -u):$(id -g)" runtime-work/fex/logs
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
