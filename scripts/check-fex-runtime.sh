@@ -30,6 +30,7 @@ p=Path('runtime-work/fex/proot/src/extension/ashmem_memfd/ashmem_memfd.c')
 p.write_text('#include <string.h>\n'+p.read_text())
 PY
 cp tests/run-fex-proot.sh "$probe/proot-probes.sh"
+cp backend/client_runtime.py "$probe/client_runtime.py"
 curl -fLsS --retry 3 https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-devel-3.4.16-mingw.tar.gz -o "$probe/sdk.tar.gz"
 echo "c7ef65bd72eabac6e5b535411dbd8d5824d0aab24fd62ff8812666b336f18a9c  $probe/sdk.tar.gz" | sha256sum --check
 mkdir -p "$probe/sdk"
@@ -45,6 +46,7 @@ x86_64-w64-mingw32-gcc -O2 -Wall -Wextra -Werror tests/fna-vulkan-probe.c -I "$p
 # Run Windows x64 .NET on a native ARM64 Wine/FEX image, without Box64.
 docker run --rm --init -i --cap-add SYS_PTRACE --security-opt seccomp=unconfined -v "$PWD/runtime-work/fex:/check" memento-fex:1 bash <<'PROBE'
 set -euo pipefail
+python3 -c "import sys,json; sys.path.insert(0,'/check'); import client_runtime; print(json.dumps(client_runtime.inspect(),indent=2))" >/check/logs/runtime-identity.log
 export WINEPREFIX=/tmp/fex-prefix WINEARCH=win64 WINEDEBUG=-all,err+all
 export DISPLAY=:8
 Xtigervnc :8 -geometry 1280x720 -depth 24 -rfbport -1 -SecurityTypes None -nolisten tcp -ac >/check/logs/display.log 2>&1 &

@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import sys
 import tarfile
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'backend'))
+from client_runtime import pe_architecture
 
 source, output = map(Path, sys.argv[1:])
 marker = None
@@ -26,11 +28,8 @@ with tarfile.open(source, 'r|') as src, tarfile.open(output, 'w:gz', format=tarf
             data = stream.read(); stream = io.BytesIO(data)
             if name.endswith('.json'): marker = json.loads(data)
             elif name.endswith('.dll'):
-                import struct
-                pe = struct.unpack_from('<I', data, 0x3c)[0]
-                machine = struct.unpack_from('<H', data, pe+4)[0]
-                if data[:2] != b'MZ' or data[pe:pe+4] != b'PE\0\0' or machine not in (0xaa64,0xa641,0xa64e):
-                    raise ValueError('FEX module is not ARM64/ARM64EC')
+                print(name, pe_architecture(stream), flush=True)
+                stream.seek(0)
                 fex.add(Path(name).name)
             else:
                 if data[:5] != b'\x7fELF\x02' or int.from_bytes(data[18:20], 'little') != 183:
