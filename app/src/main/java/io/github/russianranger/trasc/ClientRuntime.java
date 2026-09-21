@@ -88,6 +88,7 @@ final class ClientRuntime {
             request.put("gump_space",gumpSpace);
             request.put("music_cache",options.optBoolean("music_cache",true));
             request.put("frame_budget",options.optBoolean("frame_budget",true));
+            request.put("smooth_audio",options.optBoolean("smooth_audio",true));
             boolean fexOptions=RUNTIME_ID.equals(options.optString("runtime_backend"));
             request.put("runtime_backend",RUNTIME_ID);
             request.put("managed_diagnostics",fexOptions&&options.optBoolean("managed_diagnostics",false));
@@ -115,7 +116,7 @@ final class ClientRuntime {
             if(request.getBoolean("proot_acceleration"))builder.environment().remove("PROOT_NO_SECCOMP");
             builder.environment().put("TRASC_PROOT_REPORT","1");
             if(renderer.equals("virgl"))graphics=GraphicsBridge.start(new File(natives,"libvirgl-server.so"),new File(tmp,".virgl_test"),new File(logs,"client-gpu.log"));
-            if(request.getBoolean("audio"))audio=AudioBridge.start(context,new File(run,"audio.sock"),new File(logs,"client-audio.log"));
+            if(request.getBoolean("audio"))audio=AudioBridge.start(context,new File(run,"audio.sock"),new File(logs,"client-audio.log"),request.getBoolean("smooth_audio"));
             LogRetention.rotate(new File(logs,"client-proot.log"));builder.redirectErrorStream(true);builder.redirectOutput(new File(logs,"client-proot.log"));process=builder.start();status="Starting TazUO with FEX / ARM64EC…";
             RuntimeManager.write(new File(server.work,"client/launch-options.json"),request.toString());
             final Process owned=process;final GraphicsBridge gpu=graphics;final AudioBridge sound=audio;
