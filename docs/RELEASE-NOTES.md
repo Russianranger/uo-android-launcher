@@ -1,20 +1,20 @@
-# UO Memento Recovery 0.1.14
+# UO Memento Recovery 0.2.0
 
-**Diagnostic update; the world-entry freeze is not yet fixed.** The latest 0.1.13 run entered the world with boat coloring restored, then its main thread stopped advancing while the display bridge remained responsive. The Box64 return workaround was active.
+The client now uses **native ARM64 Wine with FEX ARM64EC**. This replaces Box64 and x64 Wine, following the architecture of the previously reported Bannerhub setup. It is a new runtime preview, not a claim that long-session Thor stability has been established.
 
-Render crash tracing now records the last render-list boundary in a small shared record that the launcher can read while TazUO is stalled. Those samples appear in the existing support ZIP. Failure records no longer depend on walking or formatting an exception stack. The original client exception still propagates.
+## Update
 
-## Update and test
+1. Save/stop the realm and stop the client. Install this APK over **UO Memento Recovery**, keeping app data.
+2. In **Client**, press **Install FEX runtime** once. The new runtime and Windows prefix are separate from the previous installation. Do not import the old TRASC client-runtime archive into this version.
+3. Start the realm and launch TazUO with **Turnip 26 · Vulkan**, **Native Surface**, **1280×720**, and **1098×720 world + gump space**.
+4. Start with SDL replacement, render tracing and detailed managed diagnostics **OFF**. Previous recognized patches are restored automatically from their backups.
 
-1. Save and stop the realm, stop the client, then install this APK over **UO Memento Recovery**. Keep app data. No server rebuild, client reimport or runtime download is needed.
-2. Keep **Turnip 26 · Vulkan**, **Native Surface**, **1280x720**, and **1098x720 world + gump space** enabled.
-3. Keep **SDL Vulkan resource fixes ON**, **Render crash tracing ON**, **Detailed client diagnostics OFF**, and **Memory compatibility OFF**.
-4. If the world freezes, wait about **30 seconds**, return to the launcher and choose **Journal → Export support logs before stopping or relaunching the client**. There is no need to wait another ten minutes.
+Imported client files, .NET downloads, character profiles, server saves and controller mappings are preserved. No server rebuild or client reimport is required. The old runtime/prefix remain on disk, but are not used. Support logs now identify native Wine and both FEX modules by architecture and hash.
 
-Controller mappings, saves, imported client data, the 182-pixel gump area and runtime settings are preserved. The client DLL uses the same reversible patch as 0.1.12/0.1.13; only its diagnostic helper changes. Turning tracing off and relaunching restores the original DLL.
+## Runtime and verification
 
-## Verification limits
+The replacement is built on ARM64 from pinned Wine ARM64EC and FEX sources. Its installation is checked for native ARM64 Wine and ARM64/ARM64EC FEX modules. Windows x64 .NET 10.0.8, JIT/GC/thread/vector work, and the real TazUO 5.2 SDL/FNA3D Vulkan resource test are release gates, directly and under Linux PRoot. Existing application, controller, import/backup, layout, server compilation, APK packaging and signing checks remain required.
 
-The release requires Python, Java, UI, real server compilation, Wine/.NET, FNA/SDL, render instrumentation, pinned Box64 ARM64, APK packaging and signing-continuity checks. New tests cover an independently observed blocked drawing loop, retained failure evidence, separate render threads, exception identity and tracing without stack formatting. Wine tests use the existing Wine 10 and Windows .NET 10.0.8 fixture.
+ARM64 CI uses software Vulkan and Linux PRoot. Android PRoot, Adreno/Turnip rendering, audio/controller interaction and a sustained Memento world session still require device testing. The exact GameHub Wine 10.6/FEX date and Turnip 25 combination has not been reproduced; see [the component comparison](RUNTIME-COMPARISON.md).
 
-These tests verify diagnostic behavior and packaging. They do not reproduce the Thor freeze or establish gameplay stability. See [the freeze investigation](FREEZE-0.1.13.md).
+The release includes the separate client runtime and manifest, full Wine/FEX sources, native-bridge corresponding sources and the APK source archive.

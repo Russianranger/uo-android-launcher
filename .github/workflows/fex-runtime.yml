@@ -1,0 +1,69 @@
+name: Build and verify native Wine FEX runtime
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+jobs:
+  fex:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reuse the identical merged PR runtime after successful verification
+        id: verified
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/reuse-verified-runtime.py
+      - uses: actions/setup-dotnet@v4
+        if: steps.verified.outputs.reused != 'true'
+        with:
+          dotnet-version: '10.0.x'
+      - uses: docker/setup-buildx-action@v3
+        if: steps.verified.outputs.reused != 'true'
+      - uses: docker/build-push-action@v6
+        if: steps.verified.outputs.reused != 'true'
+        with:
+          context: client-runtime
+          target: runtime
+          load: true
+          tags: memento-fex:1
+          cache-from: type=gha,scope=memento-fex
+          cache-to: type=gha,mode=max,scope=memento-fex
+      - name: Install Windows probe cross compiler
+        if: steps.verified.outputs.reused != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+      - name: Run Windows .NET 10 x64 on ARM64 Wine and FEX
+        if: steps.verified.outputs.reused != 'true'
+        run: bash scripts/check-fex-runtime.sh
+      - uses: docker/build-push-action@v6
+        if: steps.verified.outputs.reused != 'true'
+        with:
+          context: client-runtime
+          target: sources
+          outputs: type=local,dest=runtime-work/fex/sources
+          cache-from: type=gha,scope=memento-fex
+      - name: Export the verified image
+        if: steps.verified.outputs.reused != 'true'
+        run: |
+          container=$(docker create memento-fex:1)
+          docker export "$container" -o runtime-work/fex/rootfs.tar
+          docker rm "$container"
+          mkdir -p runtime-work/fex/release
+          python3 scripts/pack-fex-runtime.py runtime-work/fex/rootfs.tar runtime-work/fex/release/client-runtime-arm64.tar.gz
+          cp runtime-work/fex/sources/*.tar.gz runtime-work/fex/release/
+          cp runtime-work/fex/sources/wine-build-config.log runtime-work/fex/logs/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fex-runtime-verification
+          path: runtime-work/fex/logs/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fex-runtime-release
+          compression-level: 0
+          path: runtime-work/fex/release/

@@ -9,7 +9,7 @@
 - .NET portable Windows runtime: downloaded directly from Microsoft's release metadata with its published SHA-512 hash. The imported client's runtimeconfig selects the major/minor and minimum patch version. Its license/notices remain inside the downloaded runtime.
 - Icon: created with built-in Image Generation for this app. Prompt: “retro 16-bit fantasy pixel-art heraldic shield with large gold UO letters, burgundy face, gold beveled metal rim, dark background, no other text.” Full-resolution original: `artwork/uo-shield.png`.
 
-The first release is a compatibility preview. The inherited Wine/Box64 execution path has not been replaced with Winlator's FEX/ARM64EC runtime. Logs distinguish startup failure from a successful client process; Android/host CI cannot validate Adreno acceleration or a Memento login on the Thor.
+The 0.2.0 client uses a separate native ARM64 Wine/FEX runtime; earlier releases used Wine/Box64. Logs distinguish startup failure from a successful client process; Android/host CI cannot validate Adreno acceleration or a Memento login on the Thor.
 
 ## 0.1.1 runtime overlay
 
@@ -36,3 +36,11 @@ The first release is a compatibility preview. The inherited Wine/Box64 execution
 - The replacement allowlist is the x64 SDL3/FNA3D pair at [TazUO 5.2 commit 73768f6](https://github.com/PlayTazUO/TazUO/tree/73768f6653d39788b00f5bce5b2a063dc76452aa/external/x64). Original SDL SHA-256 `f53fbe656b784365dc1db0de61958a51a41b5923ab9623bf2f7af4eca9649c09`; FNA3D SHA-256 `93ca16fb415438830bd1591ac25fabb92a2b532cb629b215c8bd7d73ca806eb8`. These imported libraries are not distributed by the launcher.
 - The Wine-only graphics fixture downloads that pinned FNA3D DLL and uses the FNA3D 25.11 header at `de4870e6cd215ea97ea6109cc72c25c0276f1bec`. SDL MinGW SDK archive SHA-256 `c7ef65bd72eabac6e5b535411dbd8d5824d0aab24fd62ff8812666b336f18a9c`. Test downloads are excluded from the APK/source archive.
 - Relevant upstream fixes: [allocation refcounting during pending transfers](https://github.com/libsdl-org/SDL/pull/15127), [pending-transfer cleanup indexing](https://github.com/libsdl-org/SDL/commit/f8b7e22d7d1d143f085a1b355e674b05025ef114), and [texture barriers during defrag](https://github.com/libsdl-org/SDL/pull/15593). These candidate fixes are present in the bundled version. The exact Thor `vkDestroyImageView` fault has not been reproduced by host CI.
+
+## Native Wine/FEX runtime (0.2.0)
+
+- Wine ARM64EC: [bylaws/wine](https://github.com/bylaws/wine/tree/a6844d10622fc1a973ec1f22fc4f78a0fcd6cb29), Wine 10.13 base, LGPL-2.1-or-later. The full pinned source is attached as `wine-arm64ec-source.tar.gz`.
+- FEX: [FEX-Emu/FEX](https://github.com/FEX-Emu/FEX/tree/320c5f18475b0c8a7e99c51a5fdc5b5e35b147ab), FEX-2510, MIT with bundled third-party notices. `fex-2510-source-with-submodules.tar.gz` includes the complete source and pinned submodules used to build both ARM64EC and WoW64 PE modules.
+- ARM64EC compiler: bylaws LLVM-MinGW 20250920, ARM64 Linux archive SHA-256 `bce5cc755c613515fd44e1ee9523123d854103abae147571adb645450036274d`. Build-only dependency, not installed on Android.
+- Native Debian 12 packages and their notices remain in the rootfs; exact installed versions are listed in `/etc/memento-client-packages.txt`. No amd64 Linux packages, Box64 or Bionic FEX Unix libraries are included.
+- `client-runtime/Dockerfile`, `scripts/check-fex-runtime.sh` and `scripts/pack-fex-runtime.py` are the build, verification and packaging recipes. Bannerlator was a research reference; no Bannerlator application code is bundled. See [runtime comparison](RUNTIME-COMPARISON.md).

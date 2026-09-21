@@ -1,4 +1,4 @@
-"""TazUO Wine supervisor using TRASC's display, relative input and audio transports."""
+"""Native ARM64 Wine/FEX supervisor with the existing in-app transports."""
 import json
 import os
 from pathlib import Path
@@ -11,6 +11,7 @@ import client_audio
 import client_presentation
 import client_graphics
 import client_render_trace
+import client_runtime
 from client_health import ClientHealth, prepare_render_progress
 from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, client_binary_report
 
@@ -18,8 +19,10 @@ SESSION=Path('/session')
 PREFIX=Path('/prefix')
 CLIENT=Path('/client')
 LOGS=Path('/logs')
-WINE=['/usr/local/bin/box64','/opt/wine/bin/wine']
-PREFIX_REVISION='2'
+WINE=['/opt/wine/bin/wine']
+WINESERVER=['/opt/wine/bin/wineserver']
+RUNTIME_ID='fex-arm64ec-1'
+PREFIX_REVISION=RUNTIME_ID
 stopped=False
 
 
@@ -29,34 +32,32 @@ def windows_path(relative):
 
 class Supervisor:
     def __init__(self,request):
+        request=dict(request)
+        # Old APK launch preferences are not a valid FEX diagnostic opt-in.
+        if request.get('runtime_backend') != RUNTIME_ID:
+            for key in ('managed_diagnostics','render_trace','sdl_graphics_fixes'):
+                request[key]=False
+        request['runtime_backend']=RUNTIME_ID
         self.request=request
         self.children=[]
         self.threads=[]
         self.root=Path(__file__).parent
-        self.status={'phase':'starting','display_ready':False,'client_started':False,
+        self.status={'runtime_backend':RUNTIME_ID,'phase':'starting','display_ready':False,'client_started':False,
                      'attempt_started_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
                      'resolution':request['resolution'],'display_target_fps':request['display_fps']}
         self.env=dict(os.environ,DISPLAY=':8',XAUTHORITY='/session/Xauthority',WINEPREFIX='/prefix',WINEARCH='win64',
                       # Wine's IL-only DLL loader requires mscoree even with modern
                       # CoreCLR. Disable it only in the wineboot child environment.
                       WINEDEBUG='-all,err+all',WINEDLLOVERRIDES='winemenubuilder,mshtml=;mscoree=b',
-                      BOX64_DYNAREC_STRONGMEM='1',BOX64_DYNAREC_WEAKBARRIER='1',
-                      BOX64_DYNAREC_BIGBLOCK='0',BOX64_DYNAREC_SAFEFLAGS='2',
-                      BOX64_DYNAREC_MISSING='0',BOX64_PATH='/opt/wine/bin',BOX64_LOG='1',
-                      BOX64_LD_LIBRARY_PATH='/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:/opt/wine/lib/wine/x86_64-unix',
-                      LD_LIBRARY_PATH=str(self.root),BOX64_RCFILE=str(SESSION/'box64.rc'),BOX64_MAXCPU='0',
-                      DOTNET_ROOT='E:\\',DOTNET_ROOT_X64='E:\\',DOTNET_ROOT_X86='E:\\',DOTNET_MULTILEVEL_LOOKUP='0',
-                      DOTNET_EnableWriteXorExecute='0')
-        # The runtime's stock [wine] entry overrides MAXCPU to 64, even on an
-        # eight-core handheld. Keep the conservative flags and real CPU count.
-        (SESSION/'box64.rc').write_text('[wine]\nBOX64_MAXCPU=0\n[wine64]\nBOX64_MAXCPU=0\n'
-                                       '[explorer.exe]\nBOX64_DYNAREC_BIGBLOCK=0\n')
-        # 0.1.6 mistakenly applied its experiment to wineboot and services too.
-        # The new key deliberately ignores an old persisted opt-in. Keep setup,
-        # preflight, desktop and teardown on the known-working base environment.
-        compatibility=request.get('client_memory_compatibility',False)
-        if not isinstance(compatibility,bool):raise ValueError('Invalid memory compatibility option')
-        self.status['memory_compatibility']=compatibility and request.get('mode','client')=='client'
+                      LD_LIBRARY_PATH=str(self.root),
+                      DOTNET_ROOT='E:\\',DOTNET_ROOT_X64='E:\\',DOTNET_ROOT_X86='E:\\',DOTNET_MULTILEVEL_LOOKUP='0')
+        # FEX handles x86 Windows code; Wine and its Unix libraries run natively.
+        # Do not inherit Box64 tuning, JIT policy or translator experiments.
+        for key in list(self.env):
+            if key.startswith(('BOX64_','FEX_','DOTNET_','COMPlus_')) and key not in (
+                    'DOTNET_ROOT','DOTNET_ROOT_X64','DOTNET_ROOT_X86','DOTNET_MULTILEVEL_LOOKUP'):
+                self.env.pop(key,None)
+        self.env.pop('FNA_WIN32_IGNORE_WM_PAINT',None)
         diagnostics=request.get('managed_diagnostics',False)
         if not isinstance(diagnostics,bool):raise ValueError('Invalid managed diagnostics option')
         self.status['managed_diagnostics']=diagnostics and request.get('mode','client')=='client'
@@ -154,7 +155,7 @@ class Supervisor:
             raise ValueError('Imported client executable is missing')
         # Repair existing imports on APK upgrade, before opening the display.
         report=local_client_settings(CLIENT,info)
-        graphics_fixes=self.request.get('sdl_graphics_fixes',True)
+        graphics_fixes=self.request.get('sdl_graphics_fixes',False)
         if not isinstance(graphics_fixes,bool):raise ValueError('Invalid SDL graphics fixes option')
         report['sdl_graphics']=client_graphics.prepare(CLIENT,info,self.root,
             graphics_fixes and self.request['renderer']=='turnip')
@@ -170,15 +171,6 @@ class Supervisor:
 
     def client_environment(self):
         env=self.dotnet_environment('client-dotnet-host.log')
-        # This runtime predates Box64 #4405: CALLRET=2 can return into a
-        # recycled translation after code invalidation. Use the jump table
-        # for game returns; leave wineboot, preflight and services unchanged.
-        env['BOX64_DYNAREC_CALLRET']='0'
-        # Retain the FNA hint, but TazUO replaces that filter. It did not solve
-        # the observed render-list crash; see the exact-binary investigation.
-        env['FNA_WIN32_IGNORE_WM_PAINT']='1'
-        if self.status['memory_compatibility']:
-            env.update(BOX64_DYNAREC_STRONGMEM='3',BOX64_DYNAREC_WEAKBARRIER='0')
         if self.status['managed_diagnostics']:
             hook=self.root/'Memento.Diagnostics.dll'
             if not hook.is_file():raise RuntimeError('Client diagnostics component is missing; reinstall the current APK')
@@ -198,24 +190,17 @@ class Supervisor:
                 prepare_render_progress(progress)
                 env['MEMENTO_RENDER_PROGRESS']='Z:'+str(progress).replace('/','\\')
             except (OSError,ValueError):pass
-        # Wine handles SIGSEGV before managed observers see fatal native faults.
-        # Print Box64 fault PCs/registers, plus Wine's loaded module bases for
-        # address attribution. Avoid rolling-call traces and native stack walks
-        # on every handled fault. The normal 8 MiB log rotation still applies.
-        env.update(BOX64_SHOWSEGV='1',BOX64_SHOWBT='0',WINEDEBUG='-all,err+all,trace+loaddll')
+        env['WINEDEBUG']='-all,err+all,trace+loaddll'
         write_json(LOGS/'client-compatibility.json',{
-            'memory_compatibility':self.status.get('memory_compatibility',False),
+            'runtime_backend':RUNTIME_ID,
             'managed_diagnostics':self.status['managed_diagnostics'],
             'external_health_log':'client-health.log',
-            'scope':'game_launch_only',
-            'window_repaint_policy':'fna_hint_set_client_filter_unverified',
-            'translated_returns':'jump_table_workaround_box64_4405',
+            'wine_command':WINE,
+            'translator':'FEX Windows ARM64EC (upstream defaults)',
             'render_trace':self.status.get('render_trace',{}),
             'attempt_started_utc':self.status['attempt_started_utc'],
-            'environment':{key:env[key] for key in (
-                'BOX64_DYNAREC_STRONGMEM','BOX64_DYNAREC_WEAKBARRIER','BOX64_DYNAREC_BIGBLOCK',
-                'BOX64_DYNAREC_SAFEFLAGS','BOX64_DYNAREC_CALLRET','BOX64_SHOWSEGV','BOX64_SHOWBT','WINEDEBUG','FNA_WIN32_IGNORE_WM_PAINT')},
-            'validation':'Experimental mitigation; native crash cause not established',
+            'environment':{key:env[key] for key in ('WINEDEBUG','WINEDLLOVERRIDES','WINEARCH')},
+            'validation':'ARM64 CI validation is separate from Thor gameplay validation',
         })
         return env
 
@@ -231,6 +216,9 @@ class Supervisor:
             rotate(path)
             path.unlink(missing_ok=True)
         self.update('starting')
+        identity=client_runtime.inspect()
+        write_json(LOGS/'client-runtime.json',identity)
+        self.update(runtime=identity)
         if request['mode']=='client':self.prepare_client_configuration()
         self.update('checking_libraries')
         self.run(['/usr/bin/python3','-c','import ctypes; ctypes.CDLL("libXcomposite.so.1"); print("XComposite ready")'],
@@ -301,7 +289,7 @@ class Supervisor:
             health.sample(force=True)
 
     def stop(self):
-        try:subprocess.run(['/usr/local/bin/box64','/opt/wine/bin/wineserver','-k'],env=self.env,timeout=10,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        try:subprocess.run(WINESERVER+['-k'],env=self.env,timeout=10,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         except (OSError,subprocess.TimeoutExpired):pass
         for process in reversed(self.children):
             if process.poll() is None:

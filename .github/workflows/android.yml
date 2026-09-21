@@ -70,22 +70,12 @@ jobs:
             runtime-work/sdl-probe/logs/
             runtime-work/fna-paint/logs/
             runtime-work/render-probe/logs/
-  box64-arm64:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install translator test toolchain
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y cmake build-essential python3 gcc-x86-64-linux-gnu libc6-dev-amd64-cross
-      - name: Exercise modified-code returns through pinned Box64 on ARM64
-        run: bash scripts/check-box64-arm64.sh
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: box64-return-verification
-          path: runtime-work/box64-return/logs/
+  fex-runtime:
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    uses: ./.github/workflows/fex-runtime.yml
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -153,7 +143,7 @@ jobs:
           grep -q "package: name='io.github.russianranger.uomemento.recovery'" runtime-work/badging.txt
           unzip -l app/build/outputs/apk/debug/app-debug.apk > runtime-work/apk-files.txt
           grep -q assets/Memento.Diagnostics.dll runtime-work/apk-files.txt
-          grep -q "versionCode='15'" runtime-work/badging.txt
+          grep -q "versionCode='16'" runtime-work/badging.txt
       - name: Keep the recovery certificate stable after its first release
         if: github.ref == 'refs/heads/main' && steps.anchor.outputs.exists == 'true'
         env:
@@ -177,7 +167,7 @@ jobs:
           path: app/build/reports/
   release:
     if: github.ref == 'refs/heads/main'
-    needs: [verify, apk, dotnet-wine, box64-arm64]
+    needs: [verify, apk, dotnet-wine, fex-runtime]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -188,18 +178,23 @@ jobs:
         with:
           name: uo-memento-apk
           path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: fex-runtime-release
+          path: dist
       - name: Preserve corresponding sources and publish the test release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.1.14-Recovery.apk
+          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.2.0-Recovery.apk
           mv dist/runtime-work/downloads/runtime-bridges.zip dist/runtime-bridges.zip
           curl -fL --retry 3 https://github.com/Russianranger/uo-android-launcher/releases/download/v0.1.0/runtime-corresponding-sources.tar.gz -o dist/runtime-corresponding-sources.tar.gz
           echo '492043660b1370e1910c8b8ca2b93be1f637f4929034f575591f14e67e015243  dist/runtime-corresponding-sources.tar.gz' | sha256sum --check
           cp scripts/recover-preview.py dist/recover-preview.py
-          git archive --format=zip --output=dist/UO-Memento-0.1.14-source.zip HEAD
-          (cd dist && sha256sum UO-Memento-0.1.14-Recovery.apk UO-Memento-0.1.14-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
-          if ! gh release view v0.1.14 >/dev/null 2>&1; then
-            gh release create v0.1.14 --target "$GITHUB_SHA" --prerelease --title 'UO Memento 0.1.14 — Freeze diagnostics' --notes-file docs/RELEASE-NOTES.md
+          git archive --format=zip --output=dist/UO-Memento-0.2.0-source.zip HEAD
+          (cd dist && sha256sum UO-Memento-0.2.0-Recovery.apk UO-Memento-0.2.0-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz client-runtime-arm64.tar.gz client-runtime-manifest.json wine-arm64ec-source.tar.gz fex-2510-source-with-submodules.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
+          if ! gh release view v0.2.0 >/dev/null 2>&1; then
+            gh release create v0.2.0 --target "$GITHUB_SHA" --draft --prerelease --title 'UO Memento 0.2.0 — Native Wine and FEX preview' --notes-file docs/RELEASE-NOTES.md
           fi
-          gh release upload v0.1.14 dist/UO-Memento-0.1.14-Recovery.apk dist/UO-Memento-0.1.14-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py --clobber
+          gh release upload v0.2.0 dist/UO-Memento-0.2.0-Recovery.apk dist/UO-Memento-0.2.0-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
+          gh release edit v0.2.0 --draft=false
