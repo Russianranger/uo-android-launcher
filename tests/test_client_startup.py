@@ -72,6 +72,21 @@ class StartupTests(unittest.TestCase):
         self.assertNotIn('MEMENTO_RENDER_PROGRESS',failed_observer)
         self.assertEqual(failed_observer['MEMENTO_RENDER_TRACE'],'1')
 
+    def test_frame_budget_hook_composes_only_in_client_environment(self):
+        supervisor=runner.Supervisor(self.request);supervisor.root=runner.SESSION
+        supervisor.status['frame_budget']={'active':True}
+        env=supervisor.client_environment()
+        self.assertTrue(env['DOTNET_STARTUP_HOOKS'].endswith('Memento.FrameBudget.dll'))
+        self.assertNotIn('DOTNET_STARTUP_HOOKS',supervisor.setup_environment())
+        supervisor.status['render_trace']={'active':True}
+        supervisor.status['managed_diagnostics']=True
+        (supervisor.root/'Memento.Diagnostics.dll').touch()
+        hooks=supervisor.client_environment()['DOTNET_STARTUP_HOOKS'].split(';')
+        self.assertEqual(len(hooks),3)
+        self.assertTrue(hooks[0].endswith('Memento.FrameBudget.dll'))
+        self.assertTrue(hooks[1].endswith('Memento.RenderTrace.dll'))
+        self.assertTrue(hooks[2].endswith('Memento.Diagnostics.dll'))
+
     def test_prefix_upgrade_repairs_once_and_failed_check_retries(self):
         marker=runner.PREFIX/'memento-prefix-ready';marker.touch() # v0.1.0 marker
         (runner.PREFIX/'system.reg').touch()

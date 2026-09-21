@@ -20,6 +20,8 @@ FILES = {
     'ClassicUO.IO.dll':'334d1932f6fefe22731cccbbd812a6761d55ffa607ff0a4a291c2bc796c78483',
     'ClassicUO.Utility.dll':'209db31075fbe310bbe5f827ef62cf3419eef50b77b4be351d8387eda72f62b3',
     'FNA.dll':'399c91458ccbd08bcd8094bde39a1091f5edd545fd77a9b4579016e7ac5498c6',
+    'cuoapi.dll':'20c0b4a8cb7db829087abd0e0890222cb45c4c0d3b9cf1dc72b2a1a09712a08d',
+    'ClassicUO.Renderer.dll':'52068cb6033327f6d3683acd0fe89c5e4d61c33ea694395ec207a7ef8599c171',
 }
 URL='https://drive.usercontent.google.com/download?id=1ZyIFmwQ4d_wDhF0UtPgwMYEL0PWFwuvc&export=download'
 FOLDER='Ultima-Memento/Client/TazUO-Launcher/TazUO/'

@@ -48,7 +48,24 @@ foreach (var t in original.GetTypes())
     }
 }
 bool music = args.Contains("--music");
-var expected = music ? new[] { "ClassicUO.Assets.SoundsLoader::Load", "ClassicUO.Assets.SoundsLoader::GetTrueFileName", "ClassicUO.Assets.SoundsLoader::ClearResources" } : new[] {"ClassicUO.Game.Scenes.GameScene::DrawRenderList", "ClassicUO.Game.Scenes.GameScene::FillGameObjectList"};
+bool frame = args.Contains("--frame");
+var expected = music ? new[] { "ClassicUO.Assets.SoundsLoader::Load", "ClassicUO.Assets.SoundsLoader::GetTrueFileName", "ClassicUO.Assets.SoundsLoader::ClearResources" } : frame ? new[] {
+    "ClassicUO.GameController::ProcessNetworkPackets", "ClassicUO.GameController::Update",
+    "ClassicUO.Network.PacketHandlers.PacketParser::ParsePackets", "ClassicUO.Game.Scenes.GameScene::Update",
+    "ClassicUO.Game.Scenes.GameScene::Load", "ClassicUO.Game.Scenes.GameScene::FillGameObjectList", "ClassicUO.Game.Managers.AudioManager::Update",
+    "ClassicUO.Network.LoginHandshake::Connect", "ClassicUO.Network.LoginHandshake::AfterRelayConnect"
+} : new[] {"ClassicUO.Game.Scenes.GameScene::DrawRenderList", "ClassicUO.Game.Scenes.GameScene::FillGameObjectList"};
+if (frame) {
+    if (original.Architecture != updated.Architecture || original.Attributes != updated.Attributes ||
+        original.GetTypes().Count() != updated.GetTypes().Count() ||
+        original.GetTypes().Sum(t=>t.Methods.Count)+1 != updated.GetTypes().Sum(t=>t.Methods.Count) ||
+        original.GetTypes().Sum(t=>t.Fields.Count) != updated.GetTypes().Sum(t=>t.Fields.Count)) throw new Exception("unexpected frame metadata change");
+    var added = updated.AssemblyReferences.Select(a=>a.FullName).Except(original.AssemblyReferences.Select(a=>a.FullName)).ToArray();
+    if (added.Length != 1 || !added[0].StartsWith("Memento.FrameBudget, Version=1.0.0.0,")) throw new Exception("unexpected frame dependency change");
+    if (original.AssemblyReferences.Any(a=>!updated.AssemblyReferences.Any(b=>b.FullName==a.FullName))) throw new Exception("removed dependency");
+    var newMethods=updated.GetTypes().SelectMany(t=>t.Methods).Select(m=>m.FullName).Except(original.GetTypes().SelectMany(t=>t.Methods).Select(m=>m.FullName)).ToArray();
+    if(newMethods.Length!=1 || newMethods[0]!="System.Void ClassicUO.Network.PacketHandlers.PacketParser::MementoClearBuffers()") throw new Exception("unexpected frame member");
+}
 if (music) {
     if (original.Architecture != updated.Architecture || original.Attributes != updated.Attributes ||
         original.GetTypes().Count() != updated.GetTypes().Count() ||
@@ -68,4 +85,4 @@ foreach (var resource in original.Resources.OfType<EmbeddedResource>())
     var other = updated.Resources.OfType<EmbeddedResource>().Single(r => r.Name == resource.Name);
     if (!resource.GetResourceData().SequenceEqual(other.GetResourceData())) throw new Exception("resource changed");
 }
-Console.WriteLine($"{(music ? "MUSIC" : "RENDER")}_PATCH_VERIFIED unchanged_methods={same} changed_methods={changed.Count} preserved_constants={constants} original_resources_preserved=true");
+Console.WriteLine($"{(music ? "MUSIC" : frame ? "FRAME" : "RENDER")}_PATCH_VERIFIED unchanged_methods={same} changed_methods={changed.Count} preserved_constants={constants} original_resources_preserved=true");

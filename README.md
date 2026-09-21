@@ -1,15 +1,15 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.2.6
+## Updating Recovery to 0.2.7
 
-This update adds a verified music-loading cache and includes the audio/display reductions from 0.2.5, on the successful 0.2.4 Wine/FEX baseline.
+This update adds a targeted TazUO packet-processing budget and stall timings to the successful 0.2.6 setup. The Wine/FEX runtime, music cache, graphics, controller mappings, audio buffer and viewport are retained.
 
-1. Stop the client and save/stop the realm, then install the APK over **UO Memento Recovery**, keeping app data.
-2. Keep **Client acceleration**, **WASAPI**, **Turnip / Native Surface**, **30 FPS**, and **1280×720 with the 1098×720 world view**.
-3. Keep **Cache music folder during loading** enabled. Launch normally; the status below the switch confirms whether the supported client cache is active. **No runtime reinstall or client reimport is needed.**
-4. Compare audio, cursor behavior, loading and temperature, then export support logs after stopping. New audio delivery-gap and display-query counters help assess further changes.
+1. Stop the client and save/stop the realm, then install the APK over **UO Memento Recovery**, keeping app data. No runtime reinstall or client reimport is needed.
+2. Keep your existing settings. The tested baseline is **Client acceleration**, **WASAPI**, **Turnip / Native Surface**, **30 FPS**, and **1280×720 with the 1098×720 world view**.
+3. Leave **Smooth world loading** and **Cache music folder during loading** enabled. Their status text confirms activation after launch. Turning Smooth world loading off and relaunching restores the original packet handling; the music cache is independent.
+4. Walk through the same interiors and back outside, test sound and controls, then log out and export support logs. Compare transition responsiveness and audio interruptions. If a problem appears, repeat the same route with Smooth world loading off.
 
-The music optimization applies only to the checksum-matched 5.2.0 Assets library. Unknown libraries stay as imported. Turning the switch off and relaunching restores the retained original; render tracing can be used independently. See [release notes](docs/RELEASE-NOTES.md) and [verification details](docs/OPTIMIZATION-0.2.6.md).
+Scheduling applies only to the checksum-matched TazUO 5.2.0 DLL. Unknown client updates stay as imported. Render tracing can be combined with the backport or used separately. See [release notes](docs/RELEASE-NOTES.md) and [verification details](docs/OPTIMIZATION-0.2.7.md).
 
 ## 0.1.1 recovery build
 
