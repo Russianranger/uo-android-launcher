@@ -118,8 +118,26 @@ jobs:
           path: |
             backend-assets/libasound_module_pcm_trasc.so
             backend-assets/audio-bundle.json
+  presentation-bridge:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and exercise cached X11 capture
+        run: |
+          bash scripts/build-presentation.sh
+          sudo apt-get update -qq
+          sudo apt-get install -y tigervnc-standalone-server x11-xserver-utils xauth libx11-dev libxext-dev libxfixes-dev libxdamage-dev libxtst-dev
+          bash scripts/check-presentation.sh backend-assets/x11-frame-bridge
+      - uses: actions/upload-artifact@v4
+        with:
+          name: presentation-bridge
+          path: |
+            backend-assets/x11-frame-bridge
+            backend-assets/presentation-bundle.json
+            backend-assets/presentation-notices.txt
   apk:
-    needs: [audio-bridge]
+    needs: [audio-bridge, presentation-bridge]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -146,7 +164,11 @@ jobs:
         with:
           name: audio-bridge
           path: backend-assets
-      - name: Package updated audio with the retained native bridges
+      - uses: actions/download-artifact@v4
+        with:
+          name: presentation-bridge
+          path: backend-assets
+      - name: Package updated audio and display with the retained native bridges
         run: python3 scripts/package-bridges.py
       - uses: actions/cache@v4
         id: signing
@@ -192,7 +214,7 @@ jobs:
           grep -q "package: name='io.github.russianranger.uomemento.recovery'" runtime-work/badging.txt
           unzip -l app/build/outputs/apk/debug/app-debug.apk > runtime-work/apk-files.txt
           grep -q assets/Memento.Diagnostics.dll runtime-work/apk-files.txt
-          grep -q "versionCode='20'" runtime-work/badging.txt
+          grep -q "versionCode='21'" runtime-work/badging.txt
       - name: Keep the recovery certificate stable after its first release
         if: github.ref == 'refs/heads/main' && steps.anchor.outputs.exists == 'true'
         env:
@@ -235,15 +257,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.2.4-Recovery.apk
+          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.2.5-Recovery.apk
           mv dist/runtime-work/downloads/runtime-bridges.zip dist/runtime-bridges.zip
           curl -fL --retry 3 https://github.com/Russianranger/uo-android-launcher/releases/download/v0.1.0/runtime-corresponding-sources.tar.gz -o dist/runtime-corresponding-sources.tar.gz
           echo '492043660b1370e1910c8b8ca2b93be1f637f4929034f575591f14e67e015243  dist/runtime-corresponding-sources.tar.gz' | sha256sum --check
           cp scripts/recover-preview.py dist/recover-preview.py
-          git archive --format=zip --output=dist/UO-Memento-0.2.4-source.zip HEAD
-          (cd dist && sha256sum UO-Memento-0.2.4-Recovery.apk UO-Memento-0.2.4-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz client-runtime-arm64.tar.gz client-runtime-manifest.json wine-arm64ec-source.tar.gz fex-2510-source-with-submodules.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
-          if ! gh release view v0.2.4 >/dev/null 2>&1; then
-            gh release create v0.2.4 --target "$GITHUB_SHA" --draft --prerelease --title 'UO Memento 0.2.4 — Client acceleration and WASAPI audio' --notes-file docs/RELEASE-NOTES.md
+          git archive --format=zip --output=dist/UO-Memento-0.2.5-source.zip HEAD
+          (cd dist && sha256sum UO-Memento-0.2.5-Recovery.apk UO-Memento-0.2.5-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz client-runtime-arm64.tar.gz client-runtime-manifest.json wine-arm64ec-source.tar.gz fex-2510-source-with-submodules.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
+          if ! gh release view v0.2.5 >/dev/null 2>&1; then
+            gh release create v0.2.5 --target "$GITHUB_SHA" --draft --prerelease --title 'UO Memento 0.2.5 — Audio and display efficiency' --notes-file docs/RELEASE-NOTES.md
           fi
-          gh release upload v0.2.4 dist/UO-Memento-0.2.4-Recovery.apk dist/UO-Memento-0.2.4-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
-          gh release edit v0.2.4 --draft=false
+          gh release upload v0.2.5 dist/UO-Memento-0.2.5-Recovery.apk dist/UO-Memento-0.2.5-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
+          gh release edit v0.2.5 --draft=false

@@ -15,6 +15,6 @@ else
     python3 - <<'PY'
 import pathlib,hashlib,json
 p=pathlib.Path('backend-assets/x11-frame-bridge')
-p.with_name('presentation-bundle.json').write_text(json.dumps({'format':1,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})+'\n')
+p.with_name('presentation-bundle.json').write_text(json.dumps({'format':1,'metadata_cache':1,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})+'\n')
 PY
 fi

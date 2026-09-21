@@ -13,7 +13,7 @@ final class AudioPcmSession {
         int write(byte[] bytes,int length) throws IOException;
         void close();
     }
-    long frames, nonzeroSamples;
+    long frames;
     private static int read(DataInputStream in)throws IOException{return Integer.reverseBytes(in.readInt());}
     private static void reply(DataOutputStream out,int value)throws IOException{out.writeInt(Integer.reverseBytes(value));out.flush();}
     void run(InputStream input,OutputStream output,Sink sink)throws IOException {
@@ -36,7 +36,6 @@ final class AudioPcmSession {
                         int accepted=sink.write(pcm,count*4);
                         if(accepted<0||accepted>count*4||accepted%4!=0)throw new IOException("Android audio write failed: "+accepted);
                         frames+=accepted/4;
-                        for(int i=0;i<accepted;i+=2)if(pcm[i]!=0||pcm[i+1]!=0)nonzeroSamples++;
                         reply(out,accepted/4);break;
                     case 5:sink.reset();reply(out,0);break;
                     default:throw new IOException("Unknown audio command");
