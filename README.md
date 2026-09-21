@@ -1,14 +1,14 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.2.0
+## Updating Recovery to 0.2.1
 
-This release replaces the client execution path with **native ARM64 Wine + FEX ARM64EC**, following the architecture in the user's Bannerhub setup. Wine runs natively and FEX translates Windows x64 code. The client no longer runs through Box64.
+This update improves audio buffering and matches TazUO's frame cap to display capture. It retains the exact **native ARM64 Wine + FEX ARM64EC** runtime from 0.2.0.
 
 1. Save/stop the realm and stop the client, then install the new APK over **UO Memento Recovery**. Keep app data.
-2. Open **Client → Install FEX runtime** once. This downloads the new runtime into its own directory and creates a separate Windows prefix. The old runtime/prefix remain available on disk; imported game files, profiles, world saves and controller mappings are preserved.
-3. Start the realm, then launch TazUO. Keep **Turnip 26 · Vulkan**, **Native Surface**, and **1280×720 with the 1098×720 world view** for the initial comparison. SDL replacement, render tracing and detailed managed diagnostics start **OFF**. Recognized previous patches are restored from their backups.
+2. **Already using 0.2.0? No runtime reinstall is needed.** The updated audio bridge is inside the APK. When upgrading from 0.1.x, select **Client → Install FEX runtime** once.
+3. Launch with **Turnip / Native Surface**, **30 FPS · cooler**, and **1280×720 with the 1098×720 world view**. Keep SDL replacement, render tracing and detailed diagnostics off. Select **60 FPS · smoother** for a separate comparison; the choice persists.
 
-No client reimport or server rebuild is needed. This is a new runtime preview: ARM64 CI checks do not establish long-session stability on the Thor. See [runtime provenance and differences from Bannerhub](docs/RUNTIME-COMPARISON.md) and [release verification](docs/RELEASE-NOTES.md).
+Imports, profiles, saves and controller mappings remain intact. No client reimport or server rebuild is needed. The supplied 0.2.0 Thor session exited cleanly; audio and temperature improvements still need device comparison. See [optimization evidence](docs/OPTIMIZATION-0.2.1.md), [runtime provenance](docs/RUNTIME-COMPARISON.md) and [release verification](docs/RELEASE-NOTES.md).
 
 ## 0.1.1 recovery build
 

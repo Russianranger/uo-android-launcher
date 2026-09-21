@@ -340,7 +340,7 @@ def prepare(folder, session):
     library = folder/'libasound_module_pcm_trasc.so'
     data = library.read_bytes()
     manifest = json.loads((folder/'audio-bundle.json').read_text())
-    if (manifest.get('protocol'), manifest.get('architecture')) != (1, 'arm64-glibc'):
+    if (manifest.get('protocol'), manifest.get('architecture'), manifest.get('buffer_policy')) != (1, 'arm64-glibc', 2):
         raise RuntimeError('Unsupported audio bridge bundle')
     if library.is_symlink() or hashlib.sha256(data).hexdigest() != manifest.get('sha256'):
         raise RuntimeError('Audio bridge checksum failed')
