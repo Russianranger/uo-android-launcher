@@ -71,6 +71,9 @@ jobs:
             runtime-work/fna-paint/logs/
             runtime-work/render-probe/logs/
   fex-runtime:
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/fex-runtime.yml
   apk:
     runs-on: ubuntu-latest
