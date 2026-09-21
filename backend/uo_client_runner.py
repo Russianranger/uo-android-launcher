@@ -12,6 +12,7 @@ import client_presentation
 import client_graphics
 import client_render_trace
 import client_runtime
+import client_prefix
 from client_health import ClientHealth, prepare_render_progress
 from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, frame_settings, client_binary_report, checkpoint_client_settings
 
@@ -108,7 +109,7 @@ class Supervisor:
         thread=threading.Thread(target=pump,daemon=True);self.threads.append(thread);thread.start()
         return process
 
-    def run(self,args,log='client-prefix.log',timeout=180,env=None):
+    def run(self,args,log='client-prefix.log',timeout=180,env=None,accepted_codes=(0,)):
         process=self.spawn(args,log,env=env)
         started=time.monotonic()
         deadline=started+timeout
@@ -116,7 +117,7 @@ class Supervisor:
             if self.stopping():raise InterruptedError('Client stopped')
             if time.monotonic()>deadline:raise RuntimeError('Setup timed out. Open '+log)
             time.sleep(.2)
-        if process.returncode:
+        if process.returncode not in accepted_codes:
             self.update(setup_exit_code=process.returncode,setup_log=log,
                         setup_seconds=round(time.monotonic()-started,2))
             if process.returncode==-signal.SIGKILL:
@@ -125,13 +126,34 @@ class Supervisor:
 
     def prepare_prefix(self):
         marker=PREFIX/'memento-prefix-ready'
-        ready=(marker.is_file() and marker.read_text()==PREFIX_REVISION
-               and (PREFIX/'system.reg').is_file() and (PREFIX/'drive_c/windows/system32/kernel32.dll').is_file())
+        registry=client_prefix.inspect(PREFIX)
+        ready=(marker.is_file() and marker.read_bytes()==PREFIX_REVISION.encode()
+               and all(item['state']=='valid' for item in registry.values())
+               and (PREFIX/'drive_c/windows/system32/kernel32.dll').is_file())
         marker.unlink(missing_ok=True)
+        health={'before':registry,'actions':{}}
         self.update('preparing_wine',display_ready=True,prefix_update='reuse' if ready else 'repair')
+        if any(item['state']!='valid' for item in registry.values()):
+            self.stop_prefix_server()
+            health=client_prefix.recover(PREFIX)
+        write_json(LOGS/'client-prefix-health.json',health)
+        self.update(prefix_registry=health)
         self.run(WINE+['wineboot','-i' if ready else '-u'],timeout=240,env=self.setup_environment())
         self.run(WINE+['cmd','/d','/c','exit','0'],log='client-wine-check.log',timeout=60)
+        # Wine saves registry files on server exit. Do not checkpoint live hives
+        # or trust a stale ready marker left behind by a device reset.
+        self.stop_prefix_server()
+        health['after']=client_prefix.inspect(PREFIX)
+        write_json(LOGS/'client-prefix-health.json',health)
+        client_prefix.checkpoint(PREFIX)
         marker.write_text(PREFIX_REVISION)
+
+    def stop_prefix_server(self):
+        # -k returns 1 when the failed startup's server has already exited.
+        # Still require a successful -w; a live/inaccessible server cannot be
+        # treated as stopped, and its registry must never be moved underneath it.
+        self.run(WINESERVER+['-k'],log='client-prefix-stop.log',timeout=15,accepted_codes=(0,1))
+        self.run(WINESERVER+['-w'],log='client-prefix-wait.log',timeout=15)
 
     def setup_environment(self):
         # Suppress wineboot's Mono installer without disabling the managed DLL

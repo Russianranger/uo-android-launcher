@@ -21,6 +21,8 @@ class StartupTests(unittest.TestCase):
             patcher=patch.object(runner,name,path);patcher.start();self.addCleanup(patcher.stop)
         self.request={'runtime_backend':runner.RUNTIME_ID,'mode':'client','renderer':'software','resolution':'1280x720','display_fps':60,
                       'audio':False,'client':{'self_contained':True,'executable':'TazUO.exe','settings':'settings.json','assets':'.'}}
+        for name in ('system.reg','userdef.reg','user.reg'):
+            (runner.PREFIX/name).write_text('WINE REGISTRY Version 2\n\n#arch=win64\n\n[Software]\n')
         (runner.CLIENT/'TazUO.exe').touch()
         (runner.CLIENT/'settings.json').write_text('{}')
         for name in ('tiledata.mul','map0.mul','cliloc.enu'):(runner.CLIENT/name).touch()
@@ -94,6 +96,14 @@ class StartupTests(unittest.TestCase):
                            log='client-dotnet.log',timeout=5)
         for thread in supervisor.threads:thread.join(timeout=2)
         self.assertIn('hostfxr failed',(runner.LOGS/'client-dotnet.log').read_text())
+
+    def test_already_exited_server_status_is_accepted_only_when_explicit(self):
+        supervisor=runner.Supervisor(self.request)
+        command=[sys.executable,'-c','raise SystemExit(1)']
+        supervisor.run(command,accepted_codes=(0,1),timeout=5)
+        with self.assertRaisesRegex(RuntimeError,'Setup exited with code 1'):
+            supervisor.run(command,timeout=5)
+        for thread in supervisor.threads:thread.join(timeout=2)
 
     def test_setup_kill_does_not_relabel_old_game_crash_as_current(self):
         for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json','client-health.log'):

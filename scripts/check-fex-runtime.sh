@@ -31,6 +31,9 @@ p.write_text('#include <string.h>\n'+p.read_text())
 PY
 cp tests/run-fex-proot.sh "$probe/proot-probes.sh"
 cp backend/client_runtime.py "$probe/client_runtime.py"
+mkdir -p "$probe/backend"
+cp backend/*.py "$probe/backend/"
+cp tests/prefix-wine-probe.py "$probe/prefix-wine-probe.py"
 curl -fLsS --retry 3 https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-devel-3.4.16-mingw.tar.gz -o "$probe/sdk.tar.gz"
 echo "c7ef65bd72eabac6e5b535411dbd8d5824d0aab24fd62ff8812666b336f18a9c  $probe/sdk.tar.gz" | sha256sum --check
 mkdir -p "$probe/sdk"

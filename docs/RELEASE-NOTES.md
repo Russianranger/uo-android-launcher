@@ -1,23 +1,27 @@
-# UO Memento Recovery 0.2.2
+# UO Memento Recovery 0.2.3
 
-Repair startup after interrupted TazUO configuration writes and revert the audio changes that sounded worse in 0.2.1. The Wine/FEX runtime, Turnip driver, original client graphics DLLs, controller mappings and 30 FPS pacing are retained.
+Repair Wine registry corruption after a hard reset. The supplied 0.2.2 logs confirm that settings recovery succeeded (`.before-memento-pacing`), but Wine then rejected `system.reg` before starting the client.
 
 ## Update
 
 1. Save/stop the realm and stop the client, then install this APK over **UO Memento Recovery**, keeping app data.
-2. Launch normally. The app checks existing settings backups and restores the newest valid JSON object if `settings.json` is damaged or missing. **No runtime reinstall is needed.** With a valid backup, no client reimport is needed either.
-3. Use **Turnip / Native Surface**, **30 FPS · cooler**, audio enabled, tracing/SDL replacement off, and **1280×720 / 1098×720 world + gump space**.
-4. Settings changed since the recovered backup may need to be set again. If every backup is invalid or absent, the launcher keeps the damaged file and explains that a client settings backup is needed; it does not silently reset preferences.
+2. Launch normally. Registry recovery runs automatically. **No runtime reinstall or client reimport is needed.** The first repair can take longer than an ordinary launch.
+3. Keep **Turnip / Native Surface**, **30 FPS · cooler**, audio enabled, tracing/SDL replacement off, and **1280×720 / 1098×720 world + gump space**.
 
 ## Changes
 
-- Recover settings from the newest valid `.memento-last-good`, `.before-memento-pacing`, or `.before-memento` backup. Skip empty, truncated, zero-filled and non-object backups. Keep exact damaged bytes in a unique local `.interrupted-*` file.
-- Save validated settings checkpoints before launch and after a clean client exit. A failed client write cannot replace the checkpoint. The viewport preparer also recovers damaged character profiles from their existing layout backup or last-good checkpoint, preserving other profile options and separate gump files.
-- Write launcher JSON through unique temporary files; sync file contents and the containing directory after atomic replacement. Recovery paths stay inside the imported client. Support reports contain recovery reason/suffix and counts, never backup contents or credentials.
-- Revert the 0.2.1 audio experiment: restore the native ALSA negotiation that gives Wine its requested 10 ms periods / 40 ms ring, Android's one-frame start threshold on Android 12+, and ordinary playback-worker scheduling. Keep real playback-head timing and queue-depth diagnostics. A versioned, checksum-verified audio bundle is deployed from this APK.
+- Inspect all three Wine registry hives before trusting the ready marker. Detect empty files, zero-filled bytes, invalid headers, incompatible architecture markers and incomplete tails. These checks detect structural damage; they are not a complete registry grammar validator.
+- Stop and wait for this prefix's wineserver before changing hives. Preserve exact damaged files in a unique local recovery directory. Restore valid last-good checkpoints where available; otherwise remove only damaged hives from the active set and let `wineboot -u` regenerate them.
+- Retain healthy registry hives and all `drive_c` files. The imported TazUO client, profiles, settings, controller mappings and realm saves are not replaced. Registry customizations present only in a damaged hive may need reapplying if no valid checkpoint exists.
+- After Wine setup and a successful command check, stop/wait for wineserver to finish saving, validate the hives, and durably checkpoint them before marking the prefix ready. A failed validation preserves earlier checkpoints and reports the failure.
+- Add `client-prefix-health.json` with fixed hive names, sizes, hashes, structural status and recovery actions. Registry contents and values are not exported.
 
-## Evidence and limits
+The Wine/FEX binaries, Turnip/graphics DLLs, 0.2.2 audio policy, frame cap and controller behavior are unchanged.
 
-The supplied 0.2.1 retries fail in `local_client_settings` while reading imported `settings.json`, before Wine starts. Pre-reset audio logging confirms the 80 ms ring and 20 ms start threshold, but only its first few seconds survive; several logs have zero-filled tails. This supports repairing interrupted configuration and rolling back the reported audio regression, but does not establish the mechanism of the sound distortion or device-wide input freeze during recording.
+## Cause and validation
 
-Verification covers interrupted/zero-filled/truncated settings, invalid backups, preference and damaged-byte preservation, profile recovery, path confinement, failed atomic replacement, actual ARM64 ALSA S16/float conversion with short writes, a 37-frame sound draining, APK deployment/signature continuity, and the unchanged .NET 10/FEX runtime directly and under PRoot. Android host/CI checks do not establish Thor audio quality, sustained performance, temperature, or recording stability. Please first compare ordinary gameplay without recording, then export support logs after stopping normally.
+In the exact Wine source used by this runtime, failure to load `system.reg` can leave prefix architecture unknown; the registry loader then selects its legacy 32-bit fallback. The subsequent native client reports a 32-bit wineserver. The uploaded runtime identity still identifies the same native ARM64 Wine binary and hashes. See [Wine registry initialization](https://github.com/bylaws/wine/blob/a6844d10622fc1a973ec1f22fc4f78a0fcd6cb29/server/registry.c) and [client architecture check](https://github.com/bylaws/wine/blob/a6844d10622fc1a973ec1f22fc4f78a0fcd6cb29/dlls/ntdll/unix/server.c).
+
+Release checks include damaged/missing hive recovery, invalid checkpoint rejection, exact damaged-byte preservation, path confinement and interrupted-restore retries. The retained ARM64/FEX runtime test under the app's patched PRoot now deliberately damages `system.reg`, requires the reported architecture error, runs the real supervisor repair, verifies a retained user registry value plus prefix/client sentinel files, exercises checkpoint recovery, and then runs .NET 10 JIT/GC and Vulkan probes from the repaired prefix. APK deployment and Recovery signing continuity are also checked.
+
+These checks establish the reproduced startup repair, not Thor gameplay/audio quality or the cause of the device-wide recording freeze. First compare ordinary gameplay without recording and export logs after a normal stop.
