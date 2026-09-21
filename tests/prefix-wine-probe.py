@@ -62,5 +62,17 @@ assert all(item['state']=='valid' for item in client_prefix.inspect(prefix).valu
 assert b'retained' in wine('reg','query',key,'/v','Kept').stdout
 assert sentinel.read_text()=='retained' and client.read_text()=='{"private":"retained"}'
 stop()
+# Healthy launches must reuse without spawning setup or changing hives.
+before={name:(prefix/name).read_bytes() for name in client_prefix.HIVES}
+real_run=supervisor.run
+def unexpected_setup(*args,**kwargs):raise AssertionError('Healthy prefix repeated Wine setup')
+supervisor.run=unexpected_setup
+supervisor.prepare_prefix()
+assert supervisor.status['prefix_update']=='reuse'
+assert before=={name:(prefix/name).read_bytes() for name in client_prefix.HIVES}
+supervisor.run=real_run
+assert b'retained' in wine('reg','query',key,'/v','Kept').stdout
+stop()
+print('FEX_PREFIX_REUSE_OK validated hives reused without Wine setup',flush=True)
 for thread in supervisor.threads:thread.join(timeout=3)
 print('FEX_PREFIX_RECOVERY_OK reproduced win32 message; regenerated system hive; retained user registry, drive_c and client; checkpoint restore passed',flush=True)

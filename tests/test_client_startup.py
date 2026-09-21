@@ -84,10 +84,40 @@ class StartupTests(unittest.TestCase):
         self.assertIn('mscoree=',boot_env['WINEDLLOVERRIDES'].split(';'))
         self.assertIn('mscoree=b',supervisor.env['WINEDLLOVERRIDES'].split(';'))
         supervisor.run.reset_mock();supervisor.prepare_prefix()
-        self.assertEqual(supervisor.run.call_args_list[0].args[0][-1],'-i')
+        supervisor.run.assert_not_called()
+        self.assertEqual(supervisor.status['prefix_update'],'reuse')
+        marker.write_text('obsolete revision')
         supervisor.run.side_effect=[None,RuntimeError('Wine check failed')]
         with self.assertRaisesRegex(RuntimeError,'Wine check failed'):supervisor.prepare_prefix()
         self.assertFalse(marker.exists(),'A failed prefix check must not mark setup ready')
+
+    def test_audio_driver_selection_covers_sdl_versions_and_renderers(self):
+        for renderer in ('turnip','virgl','software'):
+            for choice in (None,'wasapi','directsound'):
+                request=dict(self.request,renderer=renderer)
+                if choice:request['audio_driver']=choice
+                with patch.dict(runner.os.environ,{'SDL_AUDIODRIVER':'dummy','SDL_AUDIO_DRIVER':'dummy'}):
+                    supervisor=runner.Supervisor(request)
+                env=supervisor.client_environment()
+                self.assertEqual(env['SDL_AUDIODRIVER'],choice or 'wasapi')
+                self.assertEqual(env['SDL_AUDIO_DRIVER'],choice or 'wasapi')
+        with self.assertRaisesRegex(ValueError,'Invalid audio driver'):
+            runner.Supervisor(dict(self.request,audio_driver='bad'))
+
+    def test_stale_ready_marker_cannot_skip_damaged_registry_recovery(self):
+        marker=runner.PREFIX/'memento-prefix-ready';marker.write_text(runner.PREFIX_REVISION)
+        kernel=runner.PREFIX/'drive_c/windows/system32/kernel32.dll'
+        kernel.parent.mkdir(parents=True);kernel.touch()
+        (runner.PREFIX/'system.reg').write_bytes(b'\0'*4096)
+        supervisor=runner.Supervisor(self.request)
+        # Abort when actual Wine setup would run; recovery must happen first.
+        def run(args,**kwargs):
+            if 'wineboot' in args:raise RuntimeError('repair required')
+        supervisor.run=run
+        with self.assertRaisesRegex(RuntimeError,'repair required'):supervisor.prepare_prefix()
+        self.assertEqual(next(runner.PREFIX.glob('.memento-registry-recovery/*/system.reg')).read_bytes(),b'\0'*4096)
+        self.assertFalse(marker.exists())
+        self.assertEqual(supervisor.status['prefix_update'],'repair')
 
     def test_setup_failure_keeps_exit_output_and_reports_log(self):
         supervisor=runner.Supervisor(self.request)

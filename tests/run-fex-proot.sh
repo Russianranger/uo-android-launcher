@@ -15,3 +15,6 @@ WINEDEBUG=-all,err+all,trace+loaddll timeout 150 /opt/wine/bin/wine /check/stres
 grep -q FEX_DOTNET_STRESS_OK /check/logs/proot-stress.log
 FNA3D_FORCE_DRIVER=Vulkan SDL_GPU_DRIVER=vulkan timeout 180 /opt/wine/bin/wine /check/graphics/probe.exe >/check/logs/proot-graphics.log 2>&1
 grep -q FNA_VULKAN_LIFETIME_OK /check/logs/proot-graphics.log
+
+python3 /check/check_wasapi_audio.py >/check/logs/proot-wasapi.log 2>&1
+grep -q WINE_WASAPI_PCM_OK /check/logs/proot-wasapi.log

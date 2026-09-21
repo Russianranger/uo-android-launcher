@@ -33,6 +33,7 @@ cp tests/run-fex-proot.sh "$probe/proot-probes.sh"
 cp backend/client_runtime.py "$probe/client_runtime.py"
 mkdir -p "$probe/backend"
 cp backend/*.py "$probe/backend/"
+cp native/pcm_trasc.c tests/check_wasapi_audio.py "$probe/"
 cp tests/prefix-wine-probe.py "$probe/prefix-wine-probe.py"
 curl -fLsS --retry 3 https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-devel-3.4.16-mingw.tar.gz -o "$probe/sdk.tar.gz"
 echo "c7ef65bd72eabac6e5b535411dbd8d5824d0aab24fd62ff8812666b336f18a9c  $probe/sdk.tar.gz" | sha256sum --check
@@ -46,6 +47,8 @@ echo "93ca16fb415438830bd1591ac25fabb92a2b532cb629b215c8bd7d73ca806eb8  $probe/g
 echo "f53fbe656b784365dc1db0de61958a51a41b5923ab9623bf2f7af4eca9649c09  $probe/graphics/SDL3.dll" | sha256sum --check
 x86_64-w64-mingw32-gcc -O2 -Wall -Wextra -Werror tests/fna-vulkan-probe.c -I "$probe" \
   -I "$probe/sdk/x86_64-w64-mingw32/include" -L "$probe/sdk/x86_64-w64-mingw32/lib" -lSDL3 -o "$probe/graphics/probe.exe"
+x86_64-w64-mingw32-gcc -O2 -Wall -Wextra -Werror tests/wasapi-audio-probe.c \
+  -I "$probe/sdk/x86_64-w64-mingw32/include" -L "$probe/sdk/x86_64-w64-mingw32/lib" -lSDL3 -lm -o "$probe/graphics/audio-probe.exe"
 # Run Windows x64 .NET on a native ARM64 Wine/FEX image, without Box64.
 docker run --rm --init -i --cap-add SYS_PTRACE --security-opt seccomp=unconfined -v "$PWD/runtime-work/fex:/check" memento-fex:1 bash <<'PROBE'
 set -euo pipefail
@@ -67,15 +70,25 @@ grep -q FNA_VULKAN_LIFETIME_OK /check/logs/graphics.log
 # Build the app's pinned PRoot sources/patches against Linux libc for this test.
 # Android's Bionic build and device kernel still need device validation.
 apt-get update -qq >/check/logs/proot-install.log 2>&1
-apt-get install -y --no-install-recommends build-essential libtalloc-dev gawk >>/check/logs/proot-install.log 2>&1
+apt-get install -y --no-install-recommends build-essential libtalloc-dev libasound2-dev gawk >>/check/logs/proot-install.log 2>&1
+mkdir -p /check/audio
+cc -O2 -shared -fPIC -DPIC -Wall -Wextra -Werror /check/pcm_trasc.c -lasound -o /check/audio/libasound_module_pcm_trasc.so
 # All guest Linux processes are ARM64; Windows x86 is handled by FEX in Wine.
 # Debian's ARM64 GCC cannot build PRoot's unused ARM32 loader via -m32.
 make -C /check/proot/src -j4 HAS_LOADER_32BIT= PROOT_UNBUNDLE_LOADER=/unused >/check/logs/proot-build.log 2>&1
 /opt/wine/bin/wineserver -k || true
 /opt/wine/bin/wineserver -w
 export WINEPREFIX=/tmp/fex-prefix-proot
-# Match RuntimeManager.prootEnvironment: Android disables PRoot's seccomp fast path.
-export PROOT_NO_SECCOMP=1 PROOT_LOADER=/check/proot/src/loader/loader PROOT_TMP_DIR=/tmp
-timeout 480 /check/proot/src/proot --kill-on-exit --sysvipc -0 -r / /bin/bash /check/proot-probes.sh >/check/logs/proot.log 2>&1
+# Verify both the retained compatibility mode and automatic acceleration.
+export PROOT_LOADER=/check/proot/src/loader/loader PROOT_TMP_DIR=/tmp TRASC_PROOT_REPORT=1
+for mode in compatibility accelerated; do
+  export WINEPREFIX="/tmp/fex-prefix-$mode"
+  if [ "$mode" = compatibility ]; then export PROOT_NO_SECCOMP=1; else unset PROOT_NO_SECCOMP; fi
+  timeout 480 /check/proot/src/proot --kill-on-exit --sysvipc -0 -r / /bin/bash /check/proot-probes.sh >"/check/logs/proot-$mode.log" 2>&1
+  if [ "$mode" = accelerated ]; then grep -q 'seccomp acceleration observed' "/check/logs/proot-$mode.log"; fi
+  # Preserve diagnostics separately instead of overwriting the first result.
+  mkdir -p "/check/logs/$mode"
+  cp /check/logs/proot-*.log "/check/logs/$mode/"
+done
 echo "Windows x64 .NET 10.0.8 JIT/GC and FNA Vulkan passed on ARM64 FEX, directly and under PRoot"
 PROBE
