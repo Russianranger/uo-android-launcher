@@ -10,24 +10,10 @@ concurrency:
   cancel-in-progress: true
 jobs:
   verify:
-    permissions:
-      contents: read
-      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Read bootstrap Wine startup logs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh run download 35553618584 --name fex-runtime-build --dir runtime-work/bootstrap
-          python3 - <<'PYLOG'
-          from pathlib import Path
-          for p in sorted(Path('runtime-work/bootstrap').rglob('*.log')):
-              print(p.name)
-              print(p.read_text(errors='replace')[-16000:])
-          PYLOG
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

@@ -34,7 +34,7 @@ x86_64-w64-mingw32-gcc -O2 -Wall -Wextra -Werror tests/fna-vulkan-probe.c -I "$p
 # Run Windows x64 .NET on a native ARM64 Wine/FEX image, without Box64.
 docker run --rm --init --cap-add SYS_PTRACE --security-opt seccomp=unconfined -v "$PWD/runtime-work/fex:/check" memento-fex:1 bash -c '
 set -euo pipefail
-export WINEPREFIX=/check/prefix WINEARCH=win64 WINEDEBUG=-all,err+all
+export WINEPREFIX=/tmp/fex-prefix WINEARCH=win64 WINEDEBUG=-all,err+all
 export DISPLAY=:8
 Xtigervnc :8 -geometry 1280x720 -depth 24 -rfbport -1 -SecurityTypes None -nolisten tcp -ac >/check/logs/display.log 2>&1 &
 trap "/opt/wine/bin/wineserver -k || true" EXIT
@@ -54,7 +54,7 @@ apt-get update -qq >/check/logs/proot-install.log 2>&1
 apt-get install -y --no-install-recommends proot >>/check/logs/proot-install.log 2>&1
 /opt/wine/bin/wineserver -k
 /opt/wine/bin/wineserver -w
-export WINEPREFIX=/check/prefix-proot
+export WINEPREFIX=/tmp/fex-prefix-proot
 WINEDLLOVERRIDES="winemenubuilder,mshtml,mscoree=" timeout 180 proot -0 -r / /opt/wine/bin/wine wineboot -u >/check/logs/proot-prefix.log 2>&1
 WINEDEBUG=-all,err+all,trace+loaddll timeout 150 proot -0 -r / /opt/wine/bin/wine /check/stress/FexProbe.exe >/check/logs/proot-stress.log 2>&1
 grep -q FEX_DOTNET_STRESS_OK /check/logs/proot-stress.log
