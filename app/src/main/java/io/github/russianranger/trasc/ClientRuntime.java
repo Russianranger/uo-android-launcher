@@ -82,6 +82,9 @@ final class ClientRuntime {
             if(gumpSpace&&!resolution.equals("1280x720"))throw new IOException("The 1098x720 world viewport requires a 1280x720 display");
             if(!Arrays.asList("client","desktop").contains(mode)||!Arrays.asList("turnip","virgl","software").contains(renderer)||!Arrays.asList("800x600","1024x768","1280x720").contains(resolution)||!Arrays.asList("rfb","native_surface").contains(presentation)||(fps!=30&&fps!=60))throw new IOException("Unsupported client options");
             JSONObject request=new JSONObject().put("mode",mode).put("renderer",renderer).put("resolution",resolution).put("presentation_mode",presentation).put("display_fps",fps).put("audio",options.optBoolean("audio",true));
+            String audioDriver=options.optString("audio_driver","wasapi");
+            if(!audioDriver.equals("wasapi")&&!audioDriver.equals("directsound"))throw new IOException("Invalid audio driver");
+            request.put("audio_driver",audioDriver).put("proot_acceleration",options.optBoolean("proot_acceleration",true));
             request.put("gump_space",gumpSpace);
             boolean fexOptions=RUNTIME_ID.equals(options.optString("runtime_backend"));
             request.put("runtime_backend",RUNTIME_ID);
@@ -104,6 +107,11 @@ final class ClientRuntime {
                 "-b","/dev","-b","/proc","-b","/sys","-b",client+":/client","-b",dotnet+":/dotnet","-b",prefix+":/prefix","-b",run+":/session","-b",logs+":/logs","-b",backend+":/opt/uo-client","-b",tmp+":/tmp","-w","/client",
                 "/usr/bin/env","-i","HOME=/root","USER=root","PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","LANG=C.UTF-8","TMPDIR=/tmp","PYTHONUNBUFFERED=1","/usr/bin/python3","/opt/uo-client/uo_client_runner.py"));
             ProcessBuilder builder=new ProcessBuilder(args);RuntimeManager.prootEnvironment(builder,natives,tmp);
+            // The pinned PRoot checks kernel support and falls back when its
+            // seccomp acceleration is unavailable. Keep the server's policy
+            // separate; this option applies only to the client process tree.
+            if(request.getBoolean("proot_acceleration"))builder.environment().remove("PROOT_NO_SECCOMP");
+            builder.environment().put("TRASC_PROOT_REPORT","1");
             if(renderer.equals("virgl"))graphics=GraphicsBridge.start(new File(natives,"libvirgl-server.so"),new File(tmp,".virgl_test"),new File(logs,"client-gpu.log"));
             if(request.getBoolean("audio"))audio=AudioBridge.start(context,new File(run,"audio.sock"),new File(logs,"client-audio.log"));
             LogRetention.rotate(new File(logs,"client-proot.log"));builder.redirectErrorStream(true);builder.redirectOutput(new File(logs,"client-proot.log"));process=builder.start();status="Starting TazUO with FEX / ARM64EC…";

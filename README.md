@@ -1,14 +1,15 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.2.3
+## Updating Recovery to 0.2.4
 
-This update repairs damaged Wine registry files after a hard reset. In the supplied 0.2.2 logs, TazUO settings recovery succeeded; Wine then stopped on an invalid `system.reg`, producing a misleading “32-bit wineserver” message. The installed Wine binary is still native ARM64.
+This update targets slow loading, uneven frame delivery and garbled audio while retaining the Wine/FEX runtime that improved stability.
 
-1. Save/stop the realm and stop the client, then install the new APK over **UO Memento Recovery**, keeping app data.
-2. Launch normally. The app preserves damaged registry hives and restores valid checkpoints where available. Otherwise Wine rebuilds the damaged hives. Healthy registry files, `drive_c`, client files, profiles, mappings and realm saves remain in place.
-3. **No runtime reinstall or client reimport is needed.** Initial registry repair may take longer than a normal launch. Keep **Turnip / Native Surface**, **30 FPS · cooler**, and **1280×720 with the 1098×720 world view**.
+1. Stop the client and save/stop the realm, then install the new APK over **UO Memento Recovery**, keeping app data.
+2. Keep **Client acceleration** enabled, **WASAPI · recommended**, **Turnip / Native Surface**, **30 FPS · cooler**, and **1280×720 with the 1098×720 world view**. Acceleration and WASAPI are the new defaults.
+3. Launch normally. Healthy Wine prefixes now skip repeated setup; damaged prefixes still use the 0.2.3 recovery path. **No runtime reinstall or client reimport is needed.**
+4. Compare loading time, in-world FPS, audio and temperature. Export support logs after stopping. If this device cannot start with acceleration, turn **Client acceleration** off. **DirectSound · compatibility** remains available for a separate audio comparison.
 
-The 0.2.2 settings recovery and audio rollback are retained. This release makes no additional audio, renderer or translator changes. See [release notes](docs/RELEASE-NOTES.md).
+PRoot automatically falls back if its kernel acceleration is unavailable. This release does not promise a particular temperature or FPS. See [release notes](docs/RELEASE-NOTES.md) and the [evidence and validation](docs/OPTIMIZATION-0.2.4.md).
 
 ## 0.1.1 recovery build
 
@@ -28,7 +29,7 @@ A standalone ARM64 Android launcher for **Ultima Memento + the imported Windows 
 3. In **Client**, import your **complete Windows Memento client folder or ZIP**, including `TazUO.exe` (or `ClassicUO.exe`), its DLL/runtimeconfig, and the Memento asset directory. ZIPs may contain an outer folder. Include exactly one client and one asset directory with `tiledata.mul`, `cliloc.enu`, and `map0.mul`. Your imported settings, client version, credentials and plugins are retained; the server address and asset path are prepared for this app.
 4. Select **Install FEX runtime**, then **Prepare required .NET**. The app detects the required version and x64/x86 architecture and downloads Microsoft's matching portable runtime with SHA-512 verification. A self-contained client uses its included runtime.
 5. Return to **Realm → Start server**. Wait for **ONLINE**; first-start script compilation can take several minutes. If it fails, read `server.log` in Journal.
-6. Launch TazUO with **Turnip 26 · Vulkan**, **1280×720**, **Native Surface**, **60**, audio enabled. Start with **Test Wine desktop** if client startup fails. The gear menu provides keyboard, Esc, mappings and return to the launcher.
+6. Launch TazUO with **Turnip 26 · Vulkan**, **1280×720**, **Native Surface**, **30 FPS**, WASAPI audio and client acceleration enabled. Start with **Test Wine desktop** if client startup fails. The gear menu provides keyboard, Esc, mappings and return to the launcher.
 7. Log in, enter the world, move, open inventory, test targeting and audio. LT cycles the four initial layers and displays the active layer at the top. Map your TazUO macros to the chosen keys. Do not enable conflicting native controller bindings in TazUO.
 8. Log out, use **Save & stop**, restart the server and confirm the character and items persist. Create and export a world backup. Use **Journal → Export support logs** to report any issue.
 

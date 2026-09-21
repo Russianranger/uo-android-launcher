@@ -42,6 +42,7 @@ class Supervisor:
         self.request=request
         self.children=[]
         self.threads=[]
+        self.started=time.monotonic()
         self.root=Path(__file__).parent
         self.status={'runtime_backend':RUNTIME_ID,'phase':'starting','display_ready':False,'client_started':False,
                      'attempt_started_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
@@ -68,20 +69,29 @@ class Supervisor:
         self.env.pop('MEMENTO_MANAGED_LOG',None)
         self.env.pop('MEMENTO_RENDER_TRACE',None)
         self.env.pop('MEMENTO_RENDER_PROGRESS',None)
+        audio_driver=request.get('audio_driver','wasapi')
+        if audio_driver not in ('wasapi','directsound'):raise ValueError('Invalid audio driver')
+        # SDL 3 uses AUDIO_DRIVER; SDL 2 and SDL 3's legacy alias use
+        # AUDIODRIVER. Set both so imported FAudio builds agree on the backend.
+        self.env.update(SDL_AUDIO_DRIVER=audio_driver,SDL_AUDIODRIVER=audio_driver)
+        self.status['audio_driver']=audio_driver
+        self.status['proot_acceleration_requested']=request.get('proot_acceleration',True)
         renderer=request['renderer']
         if renderer=='turnip':
             write_json(SESSION/'turnip-icd.json',{'file_format_version':'1.0.0','ICD':{'library_path':str(self.root/'turnip-26.0.0.so'),'api_version':'1.3.0'}})
             self.env.update(VK_ICD_FILENAMES='/session/turnip-icd.json',VK_DRIVER_FILES='/session/turnip-icd.json',
                             MESA_VK_WSI_DEBUG='sw',
-                            FNA3D_FORCE_DRIVER='Vulkan',SDL_AUDIODRIVER='directsound')
+                            FNA3D_FORCE_DRIVER='Vulkan')
             self.env['WINEDLLOVERRIDES']+=';d3d11,dxgi=b'
         else:
             self.env.update(LIBGL_ALWAYS_SOFTWARE='1',GALLIUM_DRIVER='virpipe' if renderer=='virgl' else 'llvmpipe',
-                            FNA3D_FORCE_DRIVER='OpenGL',LP_NUM_THREADS='4',SDL_AUDIODRIVER='directsound')
+                            FNA3D_FORCE_DRIVER='OpenGL',LP_NUM_THREADS='4')
             self.env['WINEDLLOVERRIDES']+=';d3d11,dxgi=b'
 
     def update(self,phase=None,**fields):
-        if phase:self.status['phase']=phase
+        if phase:
+            self.status['phase']=phase
+            self.status.setdefault('phase_elapsed_seconds',{})[phase]=round(time.monotonic()-self.started,2)
         self.status.update(fields)
         write_json(SESSION/'status.json',self.status)
         write_json(LOGS/'client-state.json',self.status)
@@ -130,15 +140,23 @@ class Supervisor:
         ready=(marker.is_file() and marker.read_bytes()==PREFIX_REVISION.encode()
                and all(item['state']=='valid' for item in registry.values())
                and (PREFIX/'drive_c/windows/system32/kernel32.dll').is_file())
-        marker.unlink(missing_ok=True)
         health={'before':registry,'actions':{}}
         self.update('preparing_wine',display_ready=True,prefix_update='reuse' if ready else 'repair')
+        if ready:
+            # Wine initializes its services when the game starts. Re-running
+            # wineboot, cmd and a server shutdown here duplicated that work.
+            # A stale marker alone is never enough: all hives and kernel32
+            # must pass the same checks used by the reset recovery path.
+            write_json(LOGS/'client-prefix-health.json',health)
+            self.update(prefix_registry=health)
+            return
+        marker.unlink(missing_ok=True)
         if any(item['state']!='valid' for item in registry.values()):
             self.stop_prefix_server()
             health=client_prefix.recover(PREFIX)
         write_json(LOGS/'client-prefix-health.json',health)
         self.update(prefix_registry=health)
-        self.run(WINE+['wineboot','-i' if ready else '-u'],timeout=240,env=self.setup_environment())
+        self.run(WINE+['wineboot','-u'],timeout=240,env=self.setup_environment())
         self.run(WINE+['cmd','/d','/c','exit','0'],log='client-wine-check.log',timeout=60)
         # Wine saves registry files on server exit. Do not checkpoint live hives
         # or trust a stale ready marker left behind by a device reset.
@@ -224,7 +242,8 @@ class Supervisor:
             'translator':'FEX Windows ARM64EC (upstream defaults)',
             'render_trace':self.status.get('render_trace',{}),
             'attempt_started_utc':self.status['attempt_started_utc'],
-            'environment':{key:env[key] for key in ('WINEDEBUG','WINEDLLOVERRIDES','WINEARCH')},
+            'environment':{key:env[key] for key in ('WINEDEBUG','WINEDLLOVERRIDES','WINEARCH','SDL_AUDIO_DRIVER','SDL_AUDIODRIVER')},
+            'proot_acceleration_requested':self.status['proot_acceleration_requested'],
             'validation':'ARM64 CI validation is separate from Thor gameplay validation',
         })
         return env
