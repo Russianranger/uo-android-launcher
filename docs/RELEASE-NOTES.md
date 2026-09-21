@@ -1,20 +1,20 @@
-# UO Memento Recovery 0.1.13
+# UO Memento Recovery 0.1.14
 
-This update disables Box64's optimized direct returns for the game process. The bundled translator predates [upstream fix 4405](https://github.com/ptitSeb/box64/pull/4405), which addresses returns into recycled translated code. The workaround uses `BOX64_DYNAREC_CALLRET=0` and records it in support logs. It applies automatically.
+**Diagnostic update; the world-entry freeze is not yet fixed.** The latest 0.1.13 run entered the world with boat coloring restored, then its main thread stopped advancing while the display bridge remained responsive. The Box64 return workaround was active.
 
-The latest VirGL test entered the world but showed white object coloring and crashed with an access violation in DrawRenderList. That establishes that switching to OpenGL did not solve the instability. The Box64 workaround addresses a relevant known defect; **it is not yet a confirmed fix for the Thor crash**. Performance may differ.
+Render crash tracing now records the last render-list boundary in a small shared record that the launcher can read while TazUO is stalled. Those samples appear in the existing support ZIP. Failure records no longer depend on walking or formatting an exception stack. The original client exception still propagates.
 
 ## Update and test
 
-1. Save and stop the realm, stop the client, then install this APK over **UO Memento Recovery**. Keep app data; no server rebuild, client reimport, runtime download or prefix repair is required.
-2. Select **Turnip 26 · Vulkan**, **Native Surface**, **1280x720**, with **1098x720 world + gump space** enabled.
+1. Save and stop the realm, stop the client, then install this APK over **UO Memento Recovery**. Keep app data. No server rebuild, client reimport or runtime download is needed.
+2. Keep **Turnip 26 · Vulkan**, **Native Surface**, **1280x720**, and **1098x720 world + gump space** enabled.
 3. Keep **SDL Vulkan resource fixes ON**, **Render crash tracing ON**, **Detailed client diagnostics OFF**, and **Memory compatibility OFF**.
-4. Enter the same character, check the ship's color and play beyond the earlier failure interval. After a crash or freeze, export **Journal -> Export support logs**. Logs should report `BOX64_DYNAREC_CALLRET=0`.
+4. If the world freezes, wait about **30 seconds**, return to the launcher and choose **Journal → Export support logs before stopping or relaunching the client**. There is no need to wait another ten minutes.
 
-Server behavior, controller mappings, saved profiles and the 182-pixel gump area are preserved. Wine setup and .NET JIT/GC settings retain their prior behavior.
+Controller mappings, saves, imported client data, the 182-pixel gump area and runtime settings are preserved. The client DLL uses the same reversible patch as 0.1.12/0.1.13; only its diagnostic helper changes. Turning tracing off and relaunching restores the original DLL.
 
-## Release gates
+## Verification limits
 
-The release requires the existing Python, Java, UI, server compile, Wine/.NET, FNA/SDL, render-instrumentation, APK packaging and signature-continuity checks. A new real ARM64 job builds the pinned Box64 source and checks modified-code returns using an x86-64 generated-code fixture. It records stock mode separately; stock failure is not assumed. These tests do not reproduce a TazUO world session or establish device stability.
+The release requires Python, Java, UI, real server compilation, Wine/.NET, FNA/SDL, render instrumentation, pinned Box64 ARM64, APK packaging and signing-continuity checks. New tests cover an independently observed blocked drawing loop, retained failure evidence, separate render threads, exception identity and tracing without stack formatting. Wine tests use the existing Wine 10 and Windows .NET 10.0.8 fixture.
 
-See [the VirGL investigation](CRASH-0.1.12-VIRGL.md) for exact evidence, the upstream defect and verification limits.
+These tests verify diagnostic behavior and packaging. They do not reproduce the Thor freeze or establish gameplay stability. See [the freeze investigation](FREEZE-0.1.13.md).

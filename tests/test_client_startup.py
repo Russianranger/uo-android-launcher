@@ -47,11 +47,17 @@ class StartupTests(unittest.TestCase):
         supervisor.status['render_trace']={'active':True}
         env=supervisor.client_environment()
         self.assertEqual(env['MEMENTO_RENDER_TRACE'],'1')
+        self.assertIn('render-progress.bin',env['MEMENTO_RENDER_PROGRESS'])
+        self.assertEqual((runner.SESSION/'render-progress.bin').stat().st_size,1056)
         self.assertIn('Memento.RenderTrace.dll',env['DOTNET_STARTUP_HOOKS'])
         self.assertNotIn('DOTNET_STARTUP_HOOKS',supervisor.setup_environment())
         supervisor.status['managed_diagnostics']=True
         (supervisor.root/'Memento.Diagnostics.dll').touch()
         self.assertIn(';',supervisor.client_environment()['DOTNET_STARTUP_HOOKS'])
+        with patch.object(runner,'prepare_render_progress',side_effect=OSError('Read-only session')):
+            failed_observer=supervisor.client_environment()
+        self.assertNotIn('MEMENTO_RENDER_PROGRESS',failed_observer)
+        self.assertEqual(failed_observer['MEMENTO_RENDER_TRACE'],'1')
 
     def test_prefix_upgrade_repairs_once_and_failed_check_retries(self):
         marker=runner.PREFIX/'memento-prefix-ready';marker.touch() # v0.1.0 marker
