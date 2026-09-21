@@ -11,6 +11,7 @@ import client_audio
 import client_presentation
 import client_graphics
 import client_render_trace
+import client_music_cache
 import client_runtime
 import client_prefix
 from client_health import ClientHealth, prepare_render_progress
@@ -201,7 +202,8 @@ class Supervisor:
             graphics_fixes and self.request['renderer']=='turnip')
         report['render_trace']=client_render_trace.prepare(CLIENT,info,self.root,
             self.request.get('render_trace',False))
-        self.update(sdl_graphics=report['sdl_graphics'],render_trace=report['render_trace'])
+        report['music_cache']=client_music_cache.prepare(CLIENT,info,self.root,self.request.get('music_cache',True))
+        self.update(sdl_graphics=report['sdl_graphics'],render_trace=report['render_trace'],music_cache=report['music_cache'])
         renderer_settings(CLIENT,info,self.request['renderer'])
         report['pacing']=frame_settings(CLIENT,info,self.request['display_fps'])
         self.update(pacing=report['pacing'])
