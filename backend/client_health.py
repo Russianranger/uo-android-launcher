@@ -152,9 +152,9 @@ class ClientHealth:
                 'processes':processes, 'thread_limit_reached':budget == 0,
                 'process_limit_reached':bool(pending)}
 
-    def sample(self):
+    def sample(self, force=False):
         now = time.monotonic()
-        if self.disabled or now < self.next_sample:return
+        if self.disabled or (not force and now < self.next_sample):return
         self.next_sample = now+self.interval
         try:
             data = self.snapshot()

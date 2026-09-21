@@ -71,7 +71,7 @@ with tempfile.TemporaryDirectory() as temp:
             time.sleep(.05)
         row = data['threads'][0]
         assert row['list_count'] == 3 and row['readers'] == 1 and row['exited_draw_lists'] == 0, data
-        health = ClientHealth(process.pid, root, interval=0, render_progress=progress)
+        health = ClientHealth(process.pid, root, interval=3600, render_progress=progress)
         health.sample()
         time.sleep(.15)
         frozen = observer.snapshot()['threads'][0]
@@ -81,7 +81,10 @@ with tempfile.TemporaryDirectory() as temp:
         assert process.returncode == 0 and 'RENDER_PROBE_OK blocked-draw' in output, output
         finished = observer.snapshot()['threads'][0]
         assert finished['stage'] == 'draw_list_exit' and finished['exited_draw_lists'] == 2 and finished['readers'] == 0, finished
-        assert '"render_progress"' in (root/'client-health.log').read_text()
+        health.sample(force=True)
+        import json
+        samples = [json.loads(line) for line in (root/'client-health.log').read_text().splitlines()]
+        assert len(samples) == 2 and samples[-1]['render_progress']['threads'][0]['exited_draw_lists'] == 2, samples
         print('RENDER_PROGRESS_FROZEN_DRAW_OK', data, finished, flush=True)
     finally:
         release.touch()

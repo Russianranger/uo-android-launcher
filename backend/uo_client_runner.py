@@ -283,17 +283,22 @@ class Supervisor:
         started=time.monotonic()
         self.update('client_running' if request['mode']=='client' else 'wine_desktop',renderer_requested=request['renderer'],
                     compatibility='Device validation required',launcher_pid=game.pid,client_started=request['mode']=='client')
-        while not self.stopping():
-            if display.poll() is not None:raise RuntimeError('Embedded display exited')
-            code=game.poll()
-            if code is not None:
-                self.update(exit_code=code,client_seconds=round(time.monotonic()-started,2))
-                if code:raise RuntimeError('TazUO/Wine exited with code '+str(code)+'. Export logs for diagnosis.')
-                if request['mode']=='client' and time.monotonic()-started<15:
-                    raise RuntimeError('TazUO closed during startup (exit code 0). Export support logs from the Journal.')
-                break
-            health.sample()
-            time.sleep(.5)
+        try:
+            while not self.stopping():
+                if display.poll() is not None:raise RuntimeError('Embedded display exited')
+                code=game.poll()
+                if code is not None:
+                    self.update(exit_code=code,client_seconds=round(time.monotonic()-started,2))
+                    if code:raise RuntimeError('TazUO/Wine exited with code '+str(code)+'. Export logs for diagnosis.')
+                    if request['mode']=='client' and time.monotonic()-started<15:
+                        raise RuntimeError('TazUO closed during startup (exit code 0). Export support logs from the Journal.')
+                    break
+                health.sample()
+                time.sleep(.5)
+        finally:
+            # The mapped record survives the process. Keep its final boundary
+            # even when a crash happened between periodic health samples.
+            health.sample(force=True)
 
     def stop(self):
         try:subprocess.run(['/usr/local/bin/box64','/opt/wine/bin/wineserver','-k'],env=self.env,timeout=10,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
