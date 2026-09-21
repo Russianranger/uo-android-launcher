@@ -24,13 +24,14 @@ final class AudioBridge implements AutoCloseable {
     private final AudioFocusRequest focus;
     private final AudioAttributes attributes=new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build();
     private int opened;
+    private final boolean smoothDelivery;
 
-    static AudioBridge start(Context context,File path,File log)throws Exception {
-        AudioBridge bridge=new AudioBridge(context,path,log);
+    static AudioBridge start(Context context,File path,File log,boolean smoothDelivery)throws Exception {
+        AudioBridge bridge=new AudioBridge(context,path,log,smoothDelivery);
         try{bridge.listen();return bridge;}catch(Exception e){bridge.close();throw e;}
     }
-    private AudioBridge(Context context,File path,File log)throws IOException {
-        this.path=path;this.log=log;manager=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);
+    private AudioBridge(Context context,File path,File log,boolean smoothDelivery)throws IOException {
+        this.path=path;this.log=log;this.smoothDelivery=smoothDelivery;manager=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);
         focus=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(attributes)
             .setOnAudioFocusChangeListener(change->{
                 volume=change==AudioManager.AUDIOFOCUS_GAIN?1:change==AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK?.2f:0;
@@ -44,7 +45,7 @@ final class AudioBridge implements AutoCloseable {
         bound.bind(new LocalSocketAddress(path.getPath(),LocalSocketAddress.Namespace.FILESYSTEM));
         Os.chmod(path.getPath(),0600);server=new LocalServerSocket(bound.getFileDescriptor());
         int granted=manager.requestAudioFocus(focus);volume=granted==AudioManager.AUDIOFOCUS_REQUEST_GRANTED?1:0;
-        record("bridge=alsa-audiotrack protocol=1 rate=48000 channels=2 focus="+granted+" media_volume="+manager.getStreamVolume(AudioManager.STREAM_MUSIC));
+        record("bridge=alsa-audiotrack protocol=1 rate=48000 channels=2 focus="+granted+" media_volume="+manager.getStreamVolume(AudioManager.STREAM_MUSIC)+" smooth_delivery="+smoothDelivery+" input_buffer_bytes="+(smoothDelivery?16384:0));
         Thread listener=new Thread(()->{
             try {
                 while(!closed) {
@@ -60,7 +61,7 @@ final class AudioBridge implements AutoCloseable {
     }
     private synchronized void record(String text) {
         try {
-            if(log.length()>256*1024)return;
+            if(log.length()>512*1024)return;
             try(FileWriter out=new FileWriter(log,true)){out.write(java.time.Instant.now()+" "+text+"\n");}
         }catch(IOException ignored){}
     }
@@ -68,10 +69,18 @@ final class AudioBridge implements AutoCloseable {
         final LocalSocket socket;AudioTrack track;int capacity;boolean ended;
         long submitted,nonzero,totalNonzero,nextReport;boolean firstSignal;
         final AudioDeliveryStats delivery=new AudioDeliveryStats();
+        final AudioPcmSession session=new AudioPcmSession();
+        long previousReadCalls,previousReadBytes;
         Connection(LocalSocket socket){this.socket=socket;}
         public void run(){
-            AudioPcmSession session=new AudioPcmSession();
-            try{session.run(socket.getInputStream(),socket.getOutputStream(),this);}
+            try{
+                // Only the bounded playback worker receives this priority.
+                // Device policy may decline it; audio remains usable either way.
+                if(smoothDelivery)try{android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);}
+                    catch(SecurityException|IllegalArgumentException denied){record("audio_priority_unavailable="+denied.getClass().getSimpleName());}
+                record("playback_thread_priority="+android.os.Process.getThreadPriority(android.os.Process.myTid()));
+                session.run(socket.getInputStream(),socket.getOutputStream(),this,smoothDelivery);
+            }
             catch(Exception e){if(!closed)record("stream_error="+e);}
             finally{close();synchronized(connections){connections.remove(this);}record("stream_closed frames="+session.frames+" nonzero_samples="+totalNonzero);}
         }
@@ -86,7 +95,7 @@ final class AudioBridge implements AutoCloseable {
                 .setTransferMode(AudioTrack.MODE_STREAM).setBufferSizeInBytes(Math.max(minimum,capacity*4)).build();
             if(track.getState()!=AudioTrack.STATE_INITIALIZED)throw new IOException("Could not initialize Android audio");
             configureBuffer();submitted=nonzero=nextReport=0;firstSignal=false;
-            delivery.playing(false);delivery.take();
+            delivery.resetTrack();
             track.setVolume(volume);
             record("stream_config producer_frames="+capacity+" minimum_bytes="+minimum+
                 " buffer_frames="+track.getBufferSizeInFrames()+" allocated_frames="+track.getBufferCapacityInFrames()+
@@ -101,18 +110,29 @@ final class AudioBridge implements AutoCloseable {
         }
         public synchronized void start()throws IOException{if(track!=null){configureBuffer();track.play();delivery.playing(true);record("stream_start queued_frames="+submitted+" start_frames="+threshold());}}
         public synchronized void stop(){if(track!=null){report("stream_stop");track.pause();track.flush();submitted=nonzero=0;delivery.playing(false);}}
-        private void report(String event){record(event+" written="+submitted+" played="+Integer.toUnsignedLong(track.getPlaybackHeadPosition())+
-            " queued_frames="+Math.max(0,submitted-Integer.toUnsignedLong(track.getPlaybackHeadPosition()))+
-            " nonzero_samples="+nonzero+" underruns="+track.getUnderrunCount()+" state="+track.getPlayState()+" volume="+volume+delivery.take());}
+        private void report(String event){report(event,Integer.toUnsignedLong(track.getPlaybackHeadPosition()));}
+        private void report(String event,long played){
+            int underruns=track.getUnderrunCount();
+            long reads=session.inputReadCalls,bytes=session.inputBytes;
+            record(event+" written="+submitted+" played="+played+" queued_frames="+Math.max(0,submitted-played)+
+                " nonzero_samples="+nonzero+" underruns="+underruns+" interval_underruns="+delivery.underruns(underruns)+
+                " state="+track.getPlayState()+" volume="+volume+" buffer_frames="+track.getBufferSizeInFrames()+
+                " start_frames="+threshold()+" socket_read_calls="+(reads-previousReadCalls)+" socket_read_bytes="+(bytes-previousReadBytes)+delivery.take());
+            previousReadCalls=reads;previousReadBytes=bytes;
+        }
         public synchronized int position()throws IOException {
             if(track==null)throw new IOException("Audio stream closed");
+            int head=track.getPlaybackHeadPosition();long played=Integer.toUnsignedLong(head);
+            delivery.queue(submitted-played);
             long now=android.os.SystemClock.elapsedRealtime();
             if(now>=nextReport){
                 // Routing can enlarge Android's buffers after creation. Reapply the producer limit.
                 if(track.getBufferSizeInFrames()>capacity||threshold()>capacity)configureBuffer();
-                report("stream_progress");nextReport=now+5000;
+                report("stream_progress",played);nextReport=now+5000;
+                // Reporting can take time; return the current playback clock.
+                return track.getPlaybackHeadPosition();
             }
-            return track.getPlaybackHeadPosition();
+            return head;
         }
         public synchronized int write(byte[] bytes,int length)throws IOException {
             if(track==null)throw new IOException("Audio stream closed");

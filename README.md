@@ -1,15 +1,16 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.2.7
+## Updating Recovery to 0.2.8
 
-This update adds a targeted TazUO packet-processing budget and stall timings to the successful 0.2.6 setup. The Wine/FEX runtime, music cache, graphics, controller mappings, audio buffer and viewport are retained.
+This update targets audio delivery overhead with buffered socket reads and playback-worker priority. It keeps the working 40 ms audio ring and immediate startup behavior, along with the existing Wine/FEX runtime, music cache, world-loading budget, graphics, controls and viewport.
 
 1. Stop the client and save/stop the realm, then install the APK over **UO Memento Recovery**, keeping app data. No runtime reinstall or client reimport is needed.
 2. Keep your existing settings. The tested baseline is **Client acceleration**, **WASAPI**, **Turnip / Native Surface**, **30 FPS**, and **1280×720 with the 1098×720 world view**.
-3. Leave **Smooth world loading** and **Cache music folder during loading** enabled. Their status text confirms activation after launch. Turning Smooth world loading off and relaunching restores the original packet handling; the music cache is independent.
-4. Walk through the same interiors and back outside, test sound and controls, then log out and export support logs. Compare transition responsiveness and audio interruptions. If a problem appears, repeat the same route with Smooth world loading off.
+3. Leave **Smooth audio delivery**, **Smooth world loading** and **Cache music folder during loading** enabled.
+4. Test music, short sound effects and the same walking route for 10–15 minutes, including the first few minutes after launch. Log out and export support logs. If audio is worse, turn **Smooth audio delivery** off, stop and relaunch the client, and compare the same route. This restores ordinary worker priority and unbuffered reads.
+5. Open the world map, close it and reopen it. Its first image generation is already cached by TazUO; compare the second opening without deleting the cache. Report if the long pause repeats on the same unchanged map.
 
-Scheduling applies only to the checksum-matched TazUO 5.2.0 DLL. Unknown client updates stay as imported. Render tracing can be combined with the backport or used separately. See [release notes](docs/RELEASE-NOTES.md) and [verification details](docs/OPTIMIZATION-0.2.7.md).
+Audio gains still need device testing. See [release notes](docs/RELEASE-NOTES.md) and [audio and map investigation](docs/AUDIO-0.2.8.md). The retained world-loading patch applies only to the checksum-matched TazUO 5.2.0 DLL; see [its verification details](docs/OPTIMIZATION-0.2.7.md).
 
 ## 0.1.1 recovery build
 

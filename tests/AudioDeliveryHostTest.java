@@ -29,6 +29,16 @@ public final class AudioDeliveryHostTest {
         check(stats.maxCommandWaitNs==45000000&&stats.commandWaitsOver40ms==1&&stats.maxPcmReadNs==2500000&&stats.maxReplyNs==1100000,"Separate protocol waits");
         check(stats.take().contains("max_command_wait_us=45000")&&stats.maxCommandWaitNs==0,"Transport report/reset");
         stats.playing(false);stats.transport(1,1000000000);check(stats.maxCommandWaitNs==0,"Paused command waits excluded");
+        stats.queue(0);check(stats.queueSamples==0,"Paused queue samples excluded");
+        stats.playing(true);for(long n:new long[]{960,479,0,-1,480})stats.queue(n);
+        check(stats.queueSamples==5&&stats.emptyQueueSamples==2&&stats.lowQueueSamples==3,"Queue safety margin samples");
+        check(stats.minQueuedFrames==0&&stats.maxQueuedFrames==960,"Queue min/max clamps stale heads");
+        check(stats.underruns(4)==4&&stats.underruns(7)==3,"Cumulative underruns become interval deltas");
+        String queue=stats.take();check(queue.contains("min_queued_frames=0")&&queue.contains("below_10ms_samples=3"),"Queue summary");
+        check(stats.take().contains("min_queued_frames=-1"),"No samples distinguished from an empty queue");
+        check(stats.underruns(8)==1,"Report reset retains underrun baseline");
+        stats.resetTrack();check(stats.underruns(2)==2,"New track resets underrun baseline");
+        check(stats.underruns(0)==0,"Counter reset cannot produce a negative delta");
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();DataOutputStream out=new DataOutputStream(bytes);
         for(int n:new int[]{0x50414c54,1,48000,2,1920,1,4,2})put(out,n);
         byte[] pcm={1,0,2,0,3,0,4,0};out.write(pcm);put(out,4);put(out,2);out.write(pcm);put(out,3);

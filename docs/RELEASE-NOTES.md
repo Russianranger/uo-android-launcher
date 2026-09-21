@@ -1,25 +1,28 @@
-# UO Memento Recovery 0.2.7
+# UO Memento Recovery 0.2.8
 
-Targets the remaining stutters while receiving world data, using the successful 0.2.6 runtime and settings.
+Targets the remaining audio underruns after the 0.2.7 session settled down. It reduces playback socket-read overhead and requests audio priority for the playback worker. Device improvement remains to be measured.
 
 ## Install and test
 
-Save and stop the realm and client, then install **UO-Memento-0.2.7-Recovery.apk** over Recovery without clearing app data. No client import or runtime reinstall is required.
-
-Leave **Smooth world loading** enabled. Keep your existing FPS, renderer, WASAPI audio and viewport settings. Walk into the same interiors and back outside, check music/effects and controller response, then log out and export support logs. The status below the switch confirms activation for the supported DLL. Turn it off and relaunch to restore original packet handling for comparison; the music cache is independent.
+1. Save and stop the realm and client. Install **UO-Memento-0.2.8-Recovery.apk** over Recovery, keeping app data. No runtime reinstall or client reimport is needed.
+2. Leave **Smooth audio delivery** enabled. Keep WASAPI, client acceleration, Turnip / Native Surface, 30 FPS, music caching and smooth world loading at your existing settings.
+3. Test music, short sound effects and the same walking route for 10–15 minutes. Compare the first few minutes with the settled session, then log out and export support logs.
+4. If audio worsens, turn **Smooth audio delivery** off, stop and relaunch the client, and repeat the route. The setting takes effect at client launch and restores unbuffered reads and ordinary worker priority.
+5. Open the world map, close it and reopen the same map without deleting its cache. Report a repeated long pause separately from first-time map image generation.
 
 ## Changes
 
-- Backport TazUO's packet-processing budget: up to 5 ms or 1,000 complete network packets per update, retaining unfinished bytes for later frames. Large network messages no longer bypass the budget. Packets stay ordered; partial packets and plugin handling are preserved. Plugins are also serviced without fresh socket messages.
-- Include the associated connection-buffer reset when login/relay sockets are replaced, so deferred data does not cross connection boundaries.
-- Record compact five-second summaries for network processing, scene load/update, world-list preparation, game updates, audio updates and GC collection counts. No background diagnostic worker, stack sampling or per-packet log is added.
-- Audio diagnostics now separate command-read waits, PCM-read waits and reply times from AudioTrack write times. The 40 ms buffer, WASAPI selection, start threshold and PCM data are unchanged.
-- Exact input/output hashes, original backups and atomic replacement protect the supported client patch. Unknown client versions stay untouched. Original, scheduling-only, tracing-only and combined modes are reversible.
+- Read playback commands through a fixed 16 KiB input buffer to reduce underlying socket calls. Short reads are used immediately; the producer does not have to fill this buffer. Every protocol reply still flushes immediately, and PCM bytes, partial-write handling and the playback clock are preserved.
+- Request Android audio priority only on the playback worker. If device policy declines it, playback continues at the available priority. The new switch controls this and buffered reads together.
+- Add five-second diagnostics for interval underruns, sampled queue depth and actual input-stream read calls/bytes. Keep a bounded 512 KiB audio log so the added fields fit longer comparisons.
+- Retain the tested 10 ms period / 40 ms audio ring and one-frame startup threshold on Android 12+. This does not repeat the 0.2.1 larger-buffer/startup-watermark experiment. Wine/FEX, native audio, graphics, controls and client patches are retained.
+
+## World-map pause
+
+The user identified the late pause in the 0.2.7 recording as opening the world map and generating its map image. The matched TazUO source already performs map-image loading/generation in a background task and reuses a PNG cache keyed by map data. First generation can still compete for CPU/memory, and texture loading may involve graphics-thread work. No map patch is included: a repeat opening will establish whether there is a recurring problem to fix. The trace does not prove that the full pause was GC or PNG generation alone.
 
 ## Verification and limits
 
-The production patch is generated from the exact TazUO 5.2.0 assembly and compared byte-for-byte with the shipped binary deltas. Structural verification preserves 19,779 original methods, all 3,096 constants and embedded resources; nine original methods change and one buffer-reset method is added. The extra timing helper is preloaded through the client-only .NET startup hook.
+Host tests compare buffered and unbuffered protocol replies, PCM bytes, partial acceptance, fragmented reads, invalid/truncated payloads, lifecycle handling and EOF cleanup. A real request/reply socket test sends short audio while waiting for every reply, checking that buffering does not introduce a fill requirement. A coalesced synthetic fixture reduces input calls from 122 to 6; this is not a Thor performance measurement.
 
-The real client parser and network loop are exercised with 14,000 ordered packets, split headers/bodies, a slow handler, leftover bytes without new socket data, plugin-only traffic, handler exceptions and connection reset. The original processes the burst in one update; the backport yields across updates. Tests run under .NET and Windows .NET 10.0.8 through Wine, including helper loading and composition with render tracing. Python, audio protocol, UI, APK deployment/signature and ARM64 runtime gates remain required.
-
-The 5 ms budget is cooperative: one expensive handler can exceed it, and plugin handling is not time-sliced. It aims to improve responsiveness; it does not guarantee faster total loading or eliminate audio distortion. Timings locate delays but do not prove whether a socket wait originated in Wine, the client or Android scheduling. Device performance and longer gameplay stability still need a Thor session.
+CI also verifies UI defaults/persistence, Android build/lint and deployment, stable Recovery signing, native bridges, the real server, retained ARM64 runtime and managed/Wine client probes. Automated tests cannot establish audible improvement on the Thor. Exported logs distinguish queue starvation and transport timing but do not assign every delay to one component. See [investigation details](AUDIO-0.2.8.md).

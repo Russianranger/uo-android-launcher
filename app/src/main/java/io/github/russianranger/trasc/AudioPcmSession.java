@@ -14,11 +14,22 @@ final class AudioPcmSession {
         default void transport(int stage,long nanos) {}
         void close();
     }
-    long frames;
+    long frames,inputReadCalls,inputBytes;
     private static int read(DataInputStream in)throws IOException{return Integer.reverseBytes(in.readInt());}
     private static void reply(DataOutputStream out,int value,Sink sink)throws IOException{long began=System.nanoTime();out.writeInt(Integer.reverseBytes(value));out.flush();sink.transport(3,System.nanoTime()-began);}
     void run(InputStream input,OutputStream output,Sink sink)throws IOException {
-        DataInputStream in=new DataInputStream(input);DataOutputStream out=new DataOutputStream(output);
+        run(input,output,sink,true);
+    }
+    void run(InputStream input,OutputStream output,Sink sink,boolean buffered)throws IOException {
+        InputStream counted=new FilterInputStream(input){
+            public int read()throws IOException{int n=in.read();inputReadCalls++;if(n>=0)inputBytes++;return n;}
+            public int read(byte[] bytes,int offset,int length)throws IOException{int n=in.read(bytes,offset,length);inputReadCalls++;if(n>0)inputBytes+=n;return n;}
+        };
+        // Buffer transport bytes, not time: a short read is consumed immediately.
+        // Replies still flush for every command; the producer never has to fill
+        // this buffer. One fixed allocation per stream, no new audio watermark.
+        DataInputStream in=new DataInputStream(buffered?new BufferedInputStream(counted,16384):counted);
+        DataOutputStream out=new DataOutputStream(output);
         try {
             if(read(in)!=0x50414c54||read(in)!=1||read(in)!=48000||read(in)!=2)throw new IOException("Unsupported audio stream");
             int capacity=read(in);if(capacity<64||capacity>48000)throw new IOException("Invalid audio buffer size");

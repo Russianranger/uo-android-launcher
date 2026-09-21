@@ -6,7 +6,18 @@ final class AudioDeliveryStats {
     private long lastDelivery;
     long writes,zeroWrites,partialWrites,maxWriteNs,maxGapNs,gapsOver40ms,gapsOver80ms;
     long maxCommandWaitNs,maxPcmReadNs,maxReplyNs,commandWaitsOver40ms;
+    long queueSamples,emptyQueueSamples,lowQueueSamples,minQueuedFrames=Long.MAX_VALUE,maxQueuedFrames;
+    private int previousUnderruns;
     void playing(boolean value){playing=value;lastDelivery=0;}
+    void queue(long frames){
+        if(!playing)return;
+        frames=Math.max(0,frames);queueSamples++;
+        minQueuedFrames=Math.min(minQueuedFrames,frames);maxQueuedFrames=Math.max(maxQueuedFrames,frames);
+        if(frames==0)emptyQueueSamples++;
+        if(frames<480)lowQueueSamples++; // Below 10 ms at the fixed 48 kHz format.
+    }
+    int underruns(int total){int delta=Math.max(0,total-previousUnderruns);previousUnderruns=total;return delta;}
+    void resetTrack(){previousUnderruns=0;playing(false);take();}
     void transport(int stage,long nanos){
         if(!playing)return;
         nanos=Math.max(0,nanos);
@@ -32,9 +43,13 @@ final class AudioDeliveryStats {
             " max_write_us="+maxWriteNs/1000+" max_delivery_gap_us="+maxGapNs/1000+
             " gaps_over_40ms="+gapsOver40ms+" gaps_over_80ms="+gapsOver80ms+
             " max_command_wait_us="+maxCommandWaitNs/1000+" max_pcm_read_us="+maxPcmReadNs/1000+
-            " max_reply_us="+maxReplyNs/1000+" command_waits_over_40ms="+commandWaitsOver40ms;
+            " max_reply_us="+maxReplyNs/1000+" command_waits_over_40ms="+commandWaitsOver40ms+
+            " queue_samples="+queueSamples+" empty_queue_samples="+emptyQueueSamples+
+            " below_10ms_samples="+lowQueueSamples+" min_queued_frames="+(queueSamples==0?-1:minQueuedFrames)+
+            " max_queued_frames="+maxQueuedFrames;
         writes=zeroWrites=partialWrites=maxWriteNs=maxGapNs=gapsOver40ms=gapsOver80ms=0;
         maxCommandWaitNs=maxPcmReadNs=maxReplyNs=commandWaitsOver40ms=0;
+        queueSamples=emptyQueueSamples=lowQueueSamples=maxQueuedFrames=0;minQueuedFrames=Long.MAX_VALUE;
         return result;
     }
 }
