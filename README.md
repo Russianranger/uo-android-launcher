@@ -1,15 +1,15 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.2.5
+## Updating Recovery to 0.2.6
 
-This update reduces audio bookkeeping and repeated display queries on the 0.2.4 baseline that the Thor user reported running in the low 50°C range.
+This update adds a verified music-loading cache and includes the audio/display reductions from 0.2.5, on the successful 0.2.4 Wine/FEX baseline.
 
 1. Stop the client and save/stop the realm, then install the APK over **UO Memento Recovery**, keeping app data.
 2. Keep **Client acceleration**, **WASAPI**, **Turnip / Native Surface**, **30 FPS**, and **1280×720 with the 1098×720 world view**.
-3. Launch normally. **No runtime reinstall or client reimport is needed.** Audio buffering and the Wine/FEX runtime remain unchanged.
+3. Keep **Cache music folder during loading** enabled. Launch normally; the status below the switch confirms whether the supported client cache is active. **No runtime reinstall or client reimport is needed.**
 4. Compare audio, cursor behavior, loading and temperature, then export support logs after stopping. New audio delivery-gap and display-query counters help assess further changes.
 
-The music-cache source fix is prepared but **not active in this APK**: it needs the exact imported `ClassicUO.Assets.dll` before a verified, reversible binary patch can be shipped. See [release notes](docs/RELEASE-NOTES.md) and [evidence and scope](docs/OPTIMIZATION-0.2.5.md).
+The music optimization applies only to the checksum-matched 5.2.0 Assets library. Unknown libraries stay as imported. Turning the switch off and relaunching restores the retained original; render tracing can be used independently. See [release notes](docs/RELEASE-NOTES.md) and [verification details](docs/OPTIMIZATION-0.2.6.md).
 
 ## 0.1.1 recovery build
 

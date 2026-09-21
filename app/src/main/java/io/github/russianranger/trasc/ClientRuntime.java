@@ -86,6 +86,7 @@ final class ClientRuntime {
             if(!audioDriver.equals("wasapi")&&!audioDriver.equals("directsound"))throw new IOException("Invalid audio driver");
             request.put("audio_driver",audioDriver).put("proot_acceleration",options.optBoolean("proot_acceleration",true));
             request.put("gump_space",gumpSpace);
+            request.put("music_cache",options.optBoolean("music_cache",true));
             boolean fexOptions=RUNTIME_ID.equals(options.optString("runtime_backend"));
             request.put("runtime_backend",RUNTIME_ID);
             request.put("managed_diagnostics",fexOptions&&options.optBoolean("managed_diagnostics",false));

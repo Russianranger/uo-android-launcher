@@ -47,11 +47,25 @@ foreach (var t in original.GetTypes())
         if (Canonical(m) != Canonical(n)) changed.Add(m.DeclaringType.FullName + "::" + m.Name); else same++;
     }
 }
-var expected = new[] {"ClassicUO.Game.Scenes.GameScene::DrawRenderList", "ClassicUO.Game.Scenes.GameScene::FillGameObjectList"};
+bool music = args.Contains("--music");
+var expected = music ? new[] { "ClassicUO.Assets.SoundsLoader::Load", "ClassicUO.Assets.SoundsLoader::GetTrueFileName", "ClassicUO.Assets.SoundsLoader::ClearResources" } : new[] {"ClassicUO.Game.Scenes.GameScene::DrawRenderList", "ClassicUO.Game.Scenes.GameScene::FillGameObjectList"};
+if (music) {
+    if (original.Architecture != updated.Architecture || original.Attributes != updated.Attributes ||
+        original.GetTypes().Count() != updated.GetTypes().Count() ||
+        !original.AssemblyReferences.Select(a=>a.FullName).SequenceEqual(updated.AssemblyReferences.Select(a=>a.FullName)))
+        throw new Exception("unexpected assembly metadata change");
+    var addedMethods = updated.GetTypes().SelectMany(t=>t.Methods).Select(m=>m.FullName)
+        .Except(original.GetTypes().SelectMany(t=>t.Methods).Select(m=>m.FullName)).ToArray();
+    var addedFields = updated.GetTypes().SelectMany(t=>t.Fields).Select(f=>f.FullName)
+        .Except(original.GetTypes().SelectMany(t=>t.Fields).Select(f=>f.FullName)).ToArray();
+    if (addedMethods.Length != 1 || !addedMethods[0].Contains("SoundsLoader::MementoMusicFiles(") ||
+        addedFields.Length != 1 || !addedFields[0].EndsWith("SoundsLoader::_mementoMusicFiles"))
+        throw new Exception("unexpected added members");
+}
 if (!changed.Order().SequenceEqual(expected.Order())) throw new Exception("unexpected method changes: " + string.Join(",",changed));
 foreach (var resource in original.Resources.OfType<EmbeddedResource>())
 {
     var other = updated.Resources.OfType<EmbeddedResource>().Single(r => r.Name == resource.Name);
     if (!resource.GetResourceData().SequenceEqual(other.GetResourceData())) throw new Exception("resource changed");
 }
-Console.WriteLine($"RENDER_PATCH_VERIFIED unchanged_methods={same} changed_methods={changed.Count} preserved_constants={constants} original_resources_preserved=true");
+Console.WriteLine($"{(music ? "MUSIC" : "RENDER")}_PATCH_VERIFIED unchanged_methods={same} changed_methods={changed.Count} preserved_constants={constants} original_resources_preserved=true");

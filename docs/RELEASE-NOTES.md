@@ -1,24 +1,23 @@
-# UO Memento Recovery 0.2.5
+# UO Memento Recovery 0.2.6
 
-A narrow efficiency update on the successful 0.2.4 baseline. The Thor user reported substantially improved loading and sound, with temperatures in the low 50°C range on 0.2.4; further device gains from this update are not yet measured.
+Completes the music-loading optimization and includes the audio/display efficiency changes from 0.2.5. The successful Wine/FEX runtime, WASAPI, acceleration, 40 ms audio buffer, 30 FPS default and 1098×720 world inside the 1280×720 canvas are retained.
 
-## Install
+## Install and use
 
-Stop the client, save/stop the realm, then install **UO-Memento-0.2.5-Recovery.apk** over Recovery. Keep app data. No runtime reinstall, client reimport or world migration is required.
+Stop the client and save/stop the realm, then install **UO-Memento-0.2.6-Recovery.apk** over Recovery. Keep app data. You can update directly from 0.2.4; no client reimport, runtime reinstall or world migration is required.
 
-Keep **Client acceleration**, **WASAPI**, **Turnip / Native Surface**, **30 FPS** and **1280×720 / 1098×720 world + gump space**. Wine/FEX, drivers, controls, audio format, the 40 ms producer buffer and Android start threshold are unchanged.
+Keep **Cache music folder during loading** enabled. After launch, its status says whether the cache is active. The original Assets DLL is backed up before replacement. Turn the switch off and relaunch to restore it. Other client builds are left as imported.
 
 ## Changes
 
-- Remove the second scan of every accepted audio sample. Preserve progress and whole-session signal counters.
-- Add interval audio delivery-gap, write-duration and partial/zero-write counters to support logs. Pauses and initial priming are excluded from gap measurements. No extra timers or per-write log output.
-- Cache X11 window attributes and cursor images. Refresh on resize/cursor notifications and every two seconds as a fallback. Continue checking pointer position on every display request, with the existing full-pixel capture, exact duplicate comparison and frame limits.
-- Build and package the updated ARM64 display bridge, with checksum verification and real X11 tests for shared-memory and fallback capture, cursor movement/shape, clipping, resize and reconnect.
+- On the supported TazUO 5.2.0 Assets assembly, enumerate the music directory once per load. Preserve recursive search, original ordering, regex matching, ambiguity warnings and missing-track results. Reset the cache on Load and ClearResources.
+- The patch has exact input/output SHA-256 guards and atomic replacement with an original backup. It adds one private array and one private helper; it has no new DLL dependency, worker, timer or graphics change. TazUO render tracing remains independent.
+- Retain 0.2.5's single audio sample scan and interval delivery-gap/write counters, plus event-driven X11 window/cursor caches with per-request pointer tracking and a two-second refresh fallback.
 
-## Music optimization pending one file
+## Verification and limits
 
-The source change in `patches/tazuo-music-cache.patch` performs one recursive music-directory enumeration per load, preserving existing filename matching, ordering, ambiguity warnings and missing-track behavior. It is **not applied by this APK**. The loader belongs to `ClassicUO.Assets.dll`, not the earlier uploaded `TazUO.dll`. The exact imported Assets DLL is needed to generate and verify its reversible binary patch; substituting a different upstream build would change more of the working client.
+The public Memento client package contains TazUO.dll and FNA.dll matching the user's uploaded binaries exactly. Its Assets DLL is the sole supported input; no assumption about other Assets builds is made.
 
-## Verification limits
+Verification compares original and patched assembly metadata, constants, resources and method bodies: 439 original methods are unchanged, with only the three intended loader methods changed. Real-assembly probes under .NET and Windows Wine exercise configuration results, regex/case/duplicate matching, repeated lookup, new tracks, reload, changed asset roots, ClearResources and missing-directory errors. The shipped delta is regenerated and compared byte-for-byte, applied twice, and restored to the original bytes. Python checks cover unknown updates, invalid backups, corrupt deltas and interrupted replacement.
 
-Automated gates cover the audio protocol, delivery counters, X11 capture, Android build/lint/signing continuity, existing recovery paths and the retained ARM64 Wine/FEX runtime in both PRoot modes. They do not measure Thor thermals or Android speaker quality. Compare a normal session and export support logs after stopping.
+Android build/lint/deployment/signature checks, real ARM64 display/audio probes and retained Wine/FEX runtime gates remain required. These do not measure Thor speaker quality, thermals or a live world session. Further gains beyond the user's successful 0.2.4 session still need device testing.
