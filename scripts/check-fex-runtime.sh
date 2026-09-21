@@ -43,7 +43,7 @@ echo "f53fbe656b784365dc1db0de61958a51a41b5923ab9623bf2f7af4eca9649c09  $probe/g
 x86_64-w64-mingw32-gcc -O2 -Wall -Wextra -Werror tests/fna-vulkan-probe.c -I "$probe" \
   -I "$probe/sdk/x86_64-w64-mingw32/include" -L "$probe/sdk/x86_64-w64-mingw32/lib" -lSDL3 -o "$probe/graphics/probe.exe"
 # Run Windows x64 .NET on a native ARM64 Wine/FEX image, without Box64.
-docker run --rm --init --cap-add SYS_PTRACE --security-opt seccomp=unconfined -v "$PWD/runtime-work/fex:/check" memento-fex:1 bash -c '
+docker run --rm --init -i --cap-add SYS_PTRACE --security-opt seccomp=unconfined -v "$PWD/runtime-work/fex:/check" memento-fex:1 bash <<'PROBE'
 set -euo pipefail
 export WINEPREFIX=/tmp/fex-prefix WINEARCH=win64 WINEDEBUG=-all,err+all
 export DISPLAY=:8
@@ -71,4 +71,4 @@ export WINEPREFIX=/tmp/fex-prefix-proot
 export PROOT_NO_SECCOMP=1 PROOT_LOADER=/check/proot/src/loader/loader PROOT_TMP_DIR=/tmp
 timeout 480 /check/proot/src/proot --kill-on-exit --sysvipc -0 -r / /bin/bash /check/proot-probes.sh >/check/logs/proot.log 2>&1
 echo "Windows x64 .NET 10.0.8 JIT/GC and FNA Vulkan passed on ARM64 FEX, directly and under PRoot"
-'
+PROBE
