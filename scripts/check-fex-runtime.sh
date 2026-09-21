@@ -55,6 +55,9 @@ apt-get install -y --no-install-recommends proot >>/check/logs/proot-install.log
 /opt/wine/bin/wineserver -k
 /opt/wine/bin/wineserver -w
 export WINEPREFIX=/tmp/fex-prefix-proot
+# Match RuntimeManager.prootEnvironment: Android disables PRoot's seccomp fast path.
+export PROOT_NO_SECCOMP=1
+proot -0 -r / /bin/true >/check/logs/proot-smoke.log 2>&1
 WINEDLLOVERRIDES="winemenubuilder,mshtml,mscoree=" timeout 180 proot -0 -r / /opt/wine/bin/wine wineboot -u >/check/logs/proot-prefix.log 2>&1
 WINEDEBUG=-all,err+all,trace+loaddll timeout 150 proot -0 -r / /opt/wine/bin/wine /check/stress/FexProbe.exe >/check/logs/proot-stress.log 2>&1
 grep -q FEX_DOTNET_STRESS_OK /check/logs/proot-stress.log
