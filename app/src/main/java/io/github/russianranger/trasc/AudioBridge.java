@@ -123,6 +123,7 @@ final class AudioBridge implements AutoCloseable {
                 if(nonzero>0&&!firstSignal){firstSignal=true;record("stream_first_signal written="+submitted);}}
             return accepted;
         }
+        public synchronized void transport(int stage,long nanos){delivery.transport(stage,nanos);}
         synchronized void volume(float value){if(track!=null)track.setVolume(value);}
         public synchronized void close(){ended=true;if(track!=null){if(track.getState()==AudioTrack.STATE_INITIALIZED)report("stream_release");track.release();track=null;}try{socket.close();}catch(IOException ignored){}}
     }

@@ -1,23 +1,25 @@
-# UO Memento Recovery 0.2.6
+# UO Memento Recovery 0.2.7
 
-Completes the music-loading optimization and includes the audio/display efficiency changes from 0.2.5. The successful Wine/FEX runtime, WASAPI, acceleration, 40 ms audio buffer, 30 FPS default and 1098×720 world inside the 1280×720 canvas are retained.
+Targets the remaining stutters while receiving world data, using the successful 0.2.6 runtime and settings.
 
-## Install and use
+## Install and test
 
-Stop the client and save/stop the realm, then install **UO-Memento-0.2.6-Recovery.apk** over Recovery. Keep app data. You can update directly from 0.2.4; no client reimport, runtime reinstall or world migration is required.
+Save and stop the realm and client, then install **UO-Memento-0.2.7-Recovery.apk** over Recovery without clearing app data. No client import or runtime reinstall is required.
 
-Keep **Cache music folder during loading** enabled. After launch, its status says whether the cache is active. The original Assets DLL is backed up before replacement. Turn the switch off and relaunch to restore it. Other client builds are left as imported.
+Leave **Smooth world loading** enabled. Keep your existing FPS, renderer, WASAPI audio and viewport settings. Walk into the same interiors and back outside, check music/effects and controller response, then log out and export support logs. The status below the switch confirms activation for the supported DLL. Turn it off and relaunch to restore original packet handling for comparison; the music cache is independent.
 
 ## Changes
 
-- On the supported TazUO 5.2.0 Assets assembly, enumerate the music directory once per load. Preserve recursive search, original ordering, regex matching, ambiguity warnings and missing-track results. Reset the cache on Load and ClearResources.
-- The patch has exact input/output SHA-256 guards and atomic replacement with an original backup. It adds one private array and one private helper; it has no new DLL dependency, worker, timer or graphics change. TazUO render tracing remains independent.
-- Retain 0.2.5's single audio sample scan and interval delivery-gap/write counters, plus event-driven X11 window/cursor caches with per-request pointer tracking and a two-second refresh fallback.
+- Backport TazUO's packet-processing budget: up to 5 ms or 1,000 complete network packets per update, retaining unfinished bytes for later frames. Large network messages no longer bypass the budget. Packets stay ordered; partial packets and plugin handling are preserved. Plugins are also serviced without fresh socket messages.
+- Include the associated connection-buffer reset when login/relay sockets are replaced, so deferred data does not cross connection boundaries.
+- Record compact five-second summaries for network processing, scene load/update, world-list preparation, game updates, audio updates and GC collection counts. No background diagnostic worker, stack sampling or per-packet log is added.
+- Audio diagnostics now separate command-read waits, PCM-read waits and reply times from AudioTrack write times. The 40 ms buffer, WASAPI selection, start threshold and PCM data are unchanged.
+- Exact input/output hashes, original backups and atomic replacement protect the supported client patch. Unknown client versions stay untouched. Original, scheduling-only, tracing-only and combined modes are reversible.
 
 ## Verification and limits
 
-The public Memento client package contains TazUO.dll and FNA.dll matching the user's uploaded binaries exactly. Its Assets DLL is the sole supported input; no assumption about other Assets builds is made.
+The production patch is generated from the exact TazUO 5.2.0 assembly and compared byte-for-byte with the shipped binary deltas. Structural verification preserves 19,779 original methods, all 3,096 constants and embedded resources; nine original methods change and one buffer-reset method is added. The extra timing helper is preloaded through the client-only .NET startup hook.
 
-Verification compares original and patched assembly metadata, constants, resources and method bodies: 439 original methods are unchanged, with only the three intended loader methods changed. Real-assembly probes under .NET and Windows Wine exercise configuration results, regex/case/duplicate matching, repeated lookup, new tracks, reload, changed asset roots, ClearResources and missing-directory errors. The shipped delta is regenerated and compared byte-for-byte, applied twice, and restored to the original bytes. Python checks cover unknown updates, invalid backups, corrupt deltas and interrupted replacement.
+The real client parser and network loop are exercised with 14,000 ordered packets, split headers/bodies, a slow handler, leftover bytes without new socket data, plugin-only traffic, handler exceptions and connection reset. The original processes the burst in one update; the backport yields across updates. Tests run under .NET and Windows .NET 10.0.8 through Wine, including helper loading and composition with render tracing. Python, audio protocol, UI, APK deployment/signature and ARM64 runtime gates remain required.
 
-Android build/lint/deployment/signature checks, real ARM64 display/audio probes and retained Wine/FEX runtime gates remain required. These do not measure Thor speaker quality, thermals or a live world session. Further gains beyond the user's successful 0.2.4 session still need device testing.
+The 5 ms budget is cooperative: one expensive handler can exceed it, and plugin handling is not time-sliced. It aims to improve responsiveness; it does not guarantee faster total loading or eliminate audio distortion. Timings locate delays but do not prove whether a socket wait originated in Wine, the client or Android scheduling. Device performance and longer gameplay stability still need a Thor session.

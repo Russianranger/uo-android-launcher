@@ -87,6 +87,7 @@ final class ClientRuntime {
             request.put("audio_driver",audioDriver).put("proot_acceleration",options.optBoolean("proot_acceleration",true));
             request.put("gump_space",gumpSpace);
             request.put("music_cache",options.optBoolean("music_cache",true));
+            request.put("frame_budget",options.optBoolean("frame_budget",true));
             boolean fexOptions=RUNTIME_ID.equals(options.optString("runtime_backend"));
             request.put("runtime_backend",RUNTIME_ID);
             request.put("managed_diagnostics",fexOptions&&options.optBoolean("managed_diagnostics",false));

@@ -12,6 +12,7 @@ import client_presentation
 import client_graphics
 import client_render_trace
 import client_music_cache
+import client_frame_budget
 import client_runtime
 import client_prefix
 from client_health import ClientHealth, prepare_render_progress
@@ -200,10 +201,10 @@ class Supervisor:
         if not isinstance(graphics_fixes,bool):raise ValueError('Invalid SDL graphics fixes option')
         report['sdl_graphics']=client_graphics.prepare(CLIENT,info,self.root,
             graphics_fixes and self.request['renderer']=='turnip')
-        report['render_trace']=client_render_trace.prepare(CLIENT,info,self.root,
-            self.request.get('render_trace',False))
+        report.update(client_frame_budget.prepare(CLIENT,info,self.root,
+            self.request.get('frame_budget',True),self.request.get('render_trace',False)))
         report['music_cache']=client_music_cache.prepare(CLIENT,info,self.root,self.request.get('music_cache',True))
-        self.update(sdl_graphics=report['sdl_graphics'],render_trace=report['render_trace'],music_cache=report['music_cache'])
+        self.update(sdl_graphics=report['sdl_graphics'],render_trace=report['render_trace'],music_cache=report['music_cache'],frame_budget=report['frame_budget'])
         renderer_settings(CLIENT,info,self.request['renderer'])
         report['pacing']=frame_settings(CLIENT,info,self.request['display_fps'])
         self.update(pacing=report['pacing'])
@@ -235,6 +236,11 @@ class Supervisor:
                 prepare_render_progress(progress)
                 env['MEMENTO_RENDER_PROGRESS']='Z:'+str(progress).replace('/','\\')
             except (OSError,ValueError):pass
+        if self.status.get('frame_budget',{}).get('active'):
+            hook=self.root/client_frame_budget.HELPER
+            frame_hook='Z:'+str(hook).replace('/','\\')
+            existing=env.get('DOTNET_STARTUP_HOOKS')
+            env['DOTNET_STARTUP_HOOKS']=frame_hook+(';' + existing if existing else '')
         env['WINEDEBUG']='-all,err+all,trace+loaddll'
         write_json(LOGS/'client-compatibility.json',{
             'runtime_backend':RUNTIME_ID,
@@ -243,6 +249,7 @@ class Supervisor:
             'wine_command':WINE,
             'translator':'FEX Windows ARM64EC (upstream defaults)',
             'render_trace':self.status.get('render_trace',{}),
+            'frame_budget':self.status.get('frame_budget',{}),
             'attempt_started_utc':self.status['attempt_started_utc'],
             'environment':{key:env[key] for key in ('WINEDEBUG','WINEDLLOVERRIDES','WINEARCH','SDL_AUDIO_DRIVER','SDL_AUDIODRIVER')},
             'proot_acceleration_requested':self.status['proot_acceleration_requested'],

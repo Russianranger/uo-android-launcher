@@ -7,6 +7,7 @@ final class ClientRuntimeAssets {
         "Memento.Diagnostics.dll", "Memento.RenderTrace.dll",
         "client_render_trace.py", "tazuo-5.2-render-trace.patch.b64",
         "client_music_cache.py", "tazuo-5.2-music-cache.patch.b64",
+        "client_frame_budget.py", "tazuo-5.2-frame-budget.patch.b64", "tazuo-5.2-frame-budget-render.patch.b64", "Memento.FrameBudget.dll",
         "uo_client_runner.py", "client_runtime.py", "client_prefix.py", "uo_content.py", "client_presentation.py",
         "client_audio.py", "client_health.py", "client_graphics.py", "log_retention.py",
         "graphics_probe.py", "runtime_probe.py",
