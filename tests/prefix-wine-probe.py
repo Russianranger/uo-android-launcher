@@ -31,8 +31,7 @@ def wine(*args,check=True):
     return result
 
 def stop():
-    for flag in ('-k','-w'):
-        subprocess.run(runner.WINESERVER+[flag],env=supervisor.env,check=True,timeout=20)
+    supervisor.stop_prefix_server()
 
 wine('reg','add',key,'/v','Kept','/d','retained','/f');stop()
 sentinel=prefix/'drive_c/users/root/prefix-recovery-sentinel.txt'

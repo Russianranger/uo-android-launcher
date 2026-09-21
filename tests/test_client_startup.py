@@ -97,6 +97,14 @@ class StartupTests(unittest.TestCase):
         for thread in supervisor.threads:thread.join(timeout=2)
         self.assertIn('hostfxr failed',(runner.LOGS/'client-dotnet.log').read_text())
 
+    def test_already_exited_server_status_is_accepted_only_when_explicit(self):
+        supervisor=runner.Supervisor(self.request)
+        command=[sys.executable,'-c','raise SystemExit(1)']
+        supervisor.run(command,accepted_codes=(0,1),timeout=5)
+        with self.assertRaisesRegex(RuntimeError,'Setup exited with code 1'):
+            supervisor.run(command,timeout=5)
+        for thread in supervisor.threads:thread.join(timeout=2)
+
     def test_setup_kill_does_not_relabel_old_game_crash_as_current(self):
         for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json','client-health.log'):
             (runner.LOGS/name).write_text('previous game crash')

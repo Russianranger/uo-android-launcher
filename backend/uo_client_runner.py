@@ -109,7 +109,7 @@ class Supervisor:
         thread=threading.Thread(target=pump,daemon=True);self.threads.append(thread);thread.start()
         return process
 
-    def run(self,args,log='client-prefix.log',timeout=180,env=None):
+    def run(self,args,log='client-prefix.log',timeout=180,env=None,accepted_codes=(0,)):
         process=self.spawn(args,log,env=env)
         started=time.monotonic()
         deadline=started+timeout
@@ -117,7 +117,7 @@ class Supervisor:
             if self.stopping():raise InterruptedError('Client stopped')
             if time.monotonic()>deadline:raise RuntimeError('Setup timed out. Open '+log)
             time.sleep(.2)
-        if process.returncode:
+        if process.returncode not in accepted_codes:
             self.update(setup_exit_code=process.returncode,setup_log=log,
                         setup_seconds=round(time.monotonic()-started,2))
             if process.returncode==-signal.SIGKILL:
@@ -149,7 +149,10 @@ class Supervisor:
         marker.write_text(PREFIX_REVISION)
 
     def stop_prefix_server(self):
-        self.run(WINESERVER+['-k'],log='client-prefix-stop.log',timeout=15)
+        # -k returns 1 when the failed startup's server has already exited.
+        # Still require a successful -w; a live/inaccessible server cannot be
+        # treated as stopped, and its registry must never be moved underneath it.
+        self.run(WINESERVER+['-k'],log='client-prefix-stop.log',timeout=15,accepted_codes=(0,1))
         self.run(WINESERVER+['-w'],log='client-prefix-wait.log',timeout=15)
 
     def setup_environment(self):
