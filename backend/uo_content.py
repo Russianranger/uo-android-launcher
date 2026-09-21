@@ -166,6 +166,23 @@ def renderer_settings(root, metadata, renderer):
     write_json(path, settings)
 
 
+def frame_settings(root, metadata, fps):
+    """Cap TazUO itself as well as capture; preserve unrelated settings."""
+    if type(fps) is not int or fps not in (30, 60):
+        raise ValueError('Unsupported game frame target')
+    path = confined(root, metadata['settings'])
+    settings = json.loads(path.read_text(encoding='utf-8-sig'))
+    if not isinstance(settings, dict):
+        raise ValueError('Client settings must contain a JSON object')
+    backup = confined(root, path.with_suffix('.json.before-memento-pacing').relative_to(Path(root).resolve()))
+    if not backup.exists():shutil.copy2(path, backup)
+    previous = settings.get('fps')
+    settings['fps'] = fps
+    write_json(path, settings)
+    return {'game_fps':fps, 'capture_fps':fps,
+            'previous_game_fps':previous if type(previous) is int else None}
+
+
 def viewport_settings(root, metadata):
     """Set the world camera independently of the full window/UI canvas."""
     root = Path(root).resolve()

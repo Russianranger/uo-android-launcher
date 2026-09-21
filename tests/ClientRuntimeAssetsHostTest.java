@@ -9,11 +9,14 @@ import java.util.zip.*;
 
 /** Test deployed APK contents, never the repository's Python import path. */
 public final class ClientRuntimeAssetsHostTest {
-    static final String IMPORT_PROBE="import pathlib,sys; "
+    static final String IMPORT_PROBE="import pathlib,sys,json,hashlib; "
         +"root=pathlib.Path(sys.argv[1]).resolve(); sys.path.insert(0,str(root)); "
         +"import uo_client_runner,client_health,client_render_trace,client_graphics,client_audio,client_presentation,uo_content,log_retention; "
         +"assert pathlib.Path(uo_client_runner.__file__).parent.resolve()==root; "
         +"assert client_graphics.digest(root/client_graphics.ASSET)==client_graphics.FIXED_SDL; "
+        +"audio=json.loads((root/'audio-bundle.json').read_text()); "
+        +"assert audio['buffer_policy']==2 and audio['minimum_period_frames']==960 and audio['minimum_buffer_frames']==3840; "
+        +"assert hashlib.sha256((root/'libasound_module_pcm_trasc.so').read_bytes()).hexdigest()==audio['sha256']; "
         +"print('DEPLOYED_CLIENT_IMPORT_OK',flush=True)";
 
     static String probe(Path deployed,boolean expectSuccess)throws Exception {

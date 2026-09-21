@@ -340,7 +340,7 @@ def prepare(folder, session):
     library = folder/'libasound_module_pcm_trasc.so'
     data = library.read_bytes()
     manifest = json.loads((folder/'audio-bundle.json').read_text())
-    if (manifest.get('protocol'), manifest.get('architecture')) != (1, 'arm64-glibc'):
+    if (manifest.get('protocol'), manifest.get('architecture'), manifest.get('buffer_policy')) != (1, 'arm64-glibc', 2):
         raise RuntimeError('Unsupported audio bridge bundle')
     if library.is_symlink() or hashlib.sha256(data).hexdigest() != manifest.get('sha256'):
         raise RuntimeError('Audio bridge checksum failed')
@@ -356,4 +356,5 @@ def prepare(folder, session):
         'pcm.trasc { type trasc }\n'
         'pcm.!default { type plug slave { pcm "trasc" format S16_LE rate 48000 channels 2 } }\n')
     return {'backend': 'alsa-audiotrack', 'protocol': 1, 'rate': 48000, 'channels': 2,
+            'minimum_period_ms': 20, 'minimum_buffer_ms': 80, 'start_threshold_ms': 20,
             'sha256': manifest['sha256']}
