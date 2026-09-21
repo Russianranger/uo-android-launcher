@@ -1,16 +1,14 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.1.14
+## Updating Recovery to 0.2.0
 
-Install over **UO Memento Recovery** after saving/stopping the realm and stopping the client. Keep app data. No runtime download, server rebuild or client reimport is required.
+This release replaces the client execution path with **native ARM64 Wine + FEX ARM64EC**, following the architecture in the user's Bannerhub setup. Wine runs natively and FEX translates Windows x64 code. The client no longer runs through Box64.
 
-The latest 0.1.13 run restored the boat's color but froze shortly after world entry. The client main thread stopped advancing while the display bridge stayed responsive; the Box64 return workaround was active. **This release improves freeze diagnosis, and is not a confirmed stability fix.**
+1. Save/stop the realm and stop the client, then install the new APK over **UO Memento Recovery**. Keep app data.
+2. Open **Client → Install FEX runtime** once. This downloads the new runtime into its own directory and creates a separate Windows prefix. The old runtime/prefix remain available on disk; imported game files, profiles, world saves and controller mappings are preserved.
+3. Start the realm, then launch TazUO. Keep **Turnip 26 · Vulkan**, **Native Surface**, and **1280×720 with the 1098×720 world view** for the initial comparison. SDL replacement, render tracing and detailed managed diagnostics start **OFF**. Recognized previous patches are restored from their backups.
 
-Render crash tracing now publishes the last render-list boundary to a small shared record. The launcher samples it into support logs even if game logging stops. The tracer no longer walks or formats exception stacks before recording failures. The imported client patch remains the same; turning tracing off restores the original DLL.
-
-For the next run, keep **Turnip 26 · Vulkan**, **Native Surface**, **1280×720 with the 1098×720 world view**, **SDL Vulkan resource fixes ON**, **Render crash tracing ON**, **Detailed client diagnostics OFF**, and **Memory compatibility OFF**. If it freezes, wait about **30 seconds**, return to the launcher and export Journal support logs **before stopping or relaunching the client**. See [the freeze investigation](docs/FREEZE-0.1.13.md) and [release verification limits](docs/RELEASE-NOTES.md).
-
-Controller mappings, saves, profiles and runtime settings are preserved. The user's [Bannerhub configuration](docs/RUNTIME-COMPARISON.md) uses FEX/ARM64X Wine; this release retains the existing Box64/x64 Wine runtime.
+No client reimport or server rebuild is needed. This is a new runtime preview: ARM64 CI checks do not establish long-session stability on the Thor. See [runtime provenance and differences from Bannerhub](docs/RUNTIME-COMPARISON.md) and [release verification](docs/RELEASE-NOTES.md).
 
 ## 0.1.1 recovery build
 
@@ -28,13 +26,13 @@ A standalone ARM64 Android launcher for **Ultima Memento + the imported Windows 
 1. Install the APK. Open **Realm → Install realm runtime**, then **Open runtime → Prepare Mono compiler**. These first downloads require internet.
 2. Use **Pull & compile** with `main` to fetch `Russianranger/ultima-memento`. You can also enter a tag or commit SHA. The source revision appears after compilation.
 3. In **Client**, import your **complete Windows Memento client folder or ZIP**, including `TazUO.exe` (or `ClassicUO.exe`), its DLL/runtimeconfig, and the Memento asset directory. ZIPs may contain an outer folder. Include exactly one client and one asset directory with `tiledata.mul`, `cliloc.enu`, and `map0.mul`. Your imported settings, client version, credentials and plugins are retained; the server address and asset path are prepared for this app.
-4. Select **Install client runtime**, then **Prepare required .NET**. The app detects the required version and x64/x86 architecture and downloads Microsoft's matching portable runtime with SHA-512 verification. A self-contained client uses its included runtime.
+4. Select **Install FEX runtime**, then **Prepare required .NET**. The app detects the required version and x64/x86 architecture and downloads Microsoft's matching portable runtime with SHA-512 verification. A self-contained client uses its included runtime.
 5. Return to **Realm → Start server**. Wait for **ONLINE**; first-start script compilation can take several minutes. If it fails, read `server.log` in Journal.
 6. Launch TazUO with **Turnip 26 · Vulkan**, **1280×720**, **Native Surface**, **60**, audio enabled. Start with **Test Wine desktop** if client startup fails. The gear menu provides keyboard, Esc, mappings and return to the launcher.
 7. Log in, enter the world, move, open inventory, test targeting and audio. LT cycles the four initial layers and displays the active layer at the top. Map your TazUO macros to the chosen keys. Do not enable conflicting native controller bindings in TazUO.
 8. Log out, use **Save & stop**, restart the server and confirm the character and items persist. Create and export a world backup. Use **Journal → Export support logs** to report any issue.
 
-This is an initial device-test preview. Android compilation, automated input/import/backup checks and CI server compilation are distinct from a successful Thor game session. TazUO .NET 10 world entry works on the Thor, but longer sessions have crashed and still require device validation. VirGL/OpenGL and software rendering are comparison paths. The app does not invoke installed Winlator or Termux.
+This is an initial device-test preview. Android compilation, automated input/import/backup checks and CI server compilation are distinct from a successful Thor game session. The previous Box64 runtime reached the world on the Thor but remained unstable. The new FEX runtime requires a fresh device session. VirGL/OpenGL and software rendering are comparison paths. The app does not invoke installed Winlator or Termux.
 
 ## Controller methodology
 
@@ -70,7 +68,7 @@ bash scripts/build-diagnostics.sh
 gradle --no-daemon :app:assembleDebug :app:lintDebug
 ```
 
-The APK bundles verified ARM64 PRoot, display, audio, VirGL and Turnip components plus DXVK 2.7.1 D3D11/DXGI for x64 and x86. The server runtime currently reuses TRASC's Debian compiler rootfs and installs Mono into this app's separate copy; the client runtime reuses its Wine 10 WoW64/Box64 0.4.4 rootfs. This preserves the known Android integration without requiring a separately published UO rootfs. Runtime downloads validate their manifests and checksums. Offline archive imports are available for both rootfs downloads.
+The APK bundles verified ARM64 PRoot, display, audio, VirGL and Turnip components plus DXVK 2.7.1 D3D11/DXGI for x64 and x86. The server runtime currently reuses TRASC's Debian compiler rootfs and installs Mono into this app's separate copy; the client runtime is built separately from pinned Wine ARM64EC and FEX sources in `client-runtime/Dockerfile`. It contains no Box64 or x86 Linux libraries. The APK retains the existing in-app display, controller and audio transports. Runtime downloads validate their manifests and checksums. Offline archive imports are available for both rootfs downloads.
 
 The internal Java/JNI namespace is retained for compatibility with the reused native display library; the current Android application ID is **`io.github.russianranger.uomemento.recovery`**. Realm control binds `127.0.0.1:18785`, game service `127.0.0.1:2593`; client X11 uses `:8` with a random cookie and local Unix sockets. No RFB TCP listener is exposed.
 

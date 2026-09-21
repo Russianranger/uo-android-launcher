@@ -13,32 +13,43 @@ class StartupTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
+        identity=patch.object(runner.client_runtime,'inspect',return_value={'runtime':runner.RUNTIME_ID})
+        identity.start();self.addCleanup(identity.stop)
         root=Path(self.temp.name)
         for name in ('SESSION','PREFIX','CLIENT','LOGS'):
             path=root/name;path.mkdir()
             patcher=patch.object(runner,name,path);patcher.start();self.addCleanup(patcher.stop)
-        self.request={'mode':'client','renderer':'software','resolution':'1280x720','display_fps':60,
+        self.request={'runtime_backend':runner.RUNTIME_ID,'mode':'client','renderer':'software','resolution':'1280x720','display_fps':60,
                       'audio':False,'client':{'self_contained':True,'executable':'TazUO.exe','settings':'settings.json','assets':'.'}}
         (runner.CLIENT/'TazUO.exe').touch()
         (runner.CLIENT/'settings.json').write_text('{}')
         for name in ('tiledata.mul','map0.mul','cliloc.enu'):(runner.CLIENT/name).touch()
 
-    def test_game_returns_use_jump_table_without_changing_setup_or_jit(self):
-        for renderer in ('turnip','virgl','software'):
-            supervisor=runner.Supervisor(dict(self.request,renderer=renderer))
-            baseline=dict(supervisor.env)
-            game=supervisor.client_environment()
-            self.assertEqual(game['BOX64_DYNAREC_CALLRET'],'0')
-            self.assertEqual(supervisor.env,baseline)
-            self.assertEqual(supervisor.setup_environment().get('BOX64_DYNAREC_CALLRET'),
-                             baseline.get('BOX64_DYNAREC_CALLRET'))
-            self.assertEqual(supervisor.dotnet_environment('preflight.log').get('BOX64_DYNAREC_CALLRET'),
-                             baseline.get('BOX64_DYNAREC_CALLRET'))
-            self.assertNotIn('DOTNET_TieredCompilation',game)
-            self.assertEqual(game['BOX64_DYNAREC_STRONGMEM'],baseline['BOX64_DYNAREC_STRONGMEM'])
-            report=json.loads((runner.LOGS/'client-compatibility.json').read_text())
-            self.assertEqual(report['environment']['BOX64_DYNAREC_CALLRET'],'0')
-            self.assertEqual(report['translated_returns'],'jump_table_workaround_box64_4405')
+    def test_fex_removes_old_translator_and_jit_overrides(self):
+        with patch.dict(runner.os.environ,{'BOX64_DYNAREC_CALLRET':'2',
+                         'FEX_TSOENABLED':'0','DOTNET_EnableWriteXorExecute':'0',
+                         'COMPlus_TieredCompilation':'0'}):
+            for renderer in ('turnip','virgl','software'):
+                supervisor=runner.Supervisor(dict(self.request,renderer=renderer))
+                game=supervisor.client_environment()
+                for env in (game,supervisor.setup_environment(),supervisor.dotnet_environment('check.log')):
+                    self.assertFalse(any(key.startswith(('BOX64_','FEX_','COMPlus_')) for key in env))
+                    self.assertNotIn('DOTNET_EnableWriteXorExecute',env)
+                    self.assertNotIn('DOTNET_TieredCompilation',env)
+                self.assertEqual(runner.WINE,['/opt/wine/bin/wine'])
+                report=json.loads((runner.LOGS/'client-compatibility.json').read_text())
+                self.assertEqual(report['runtime_backend'],'fex-arm64ec-1')
+
+    def test_legacy_preferences_cannot_enable_fex_experiments(self):
+        request=dict(self.request,client_memory_compatibility=True,managed_diagnostics=True,
+                     render_trace=True,sdl_graphics_fixes=True)
+        request.pop('runtime_backend')
+        supervisor=runner.Supervisor(request)
+        self.assertFalse(supervisor.status['managed_diagnostics'])
+        supervisor.prepare_client_configuration()
+        self.assertFalse(supervisor.status['render_trace']['active'])
+        self.assertFalse(supervisor.request['sdl_graphics_fixes'])
+        self.assertNotIn('DOTNET_STARTUP_HOOKS',supervisor.client_environment())
 
     def test_render_trace_only_preloads_helper_for_a_verified_patch(self):
         supervisor=runner.Supervisor(self.request)
@@ -83,49 +94,6 @@ class StartupTests(unittest.TestCase):
                            log='client-dotnet.log',timeout=5)
         for thread in supervisor.threads:thread.join(timeout=2)
         self.assertIn('hostfxr failed',(runner.LOGS/'client-dotnet.log').read_text())
-
-    def test_memory_compatibility_defaults_off_and_never_leaks_into_setup(self):
-        for choice,strong,weak in ((None,'1','1'),(True,'3','0'),(False,'1','1')):
-            request=dict(self.request,memory_compatibility=True) # stale 0.1.6 opt-in
-            if choice is not None:request['client_memory_compatibility']=choice
-            with self.subTest(choice=choice):
-                supervisor=runner.Supervisor(request)
-                supervisor.root=runner.SESSION
-                (supervisor.root/'Memento.Diagnostics.dll').touch()
-                env=supervisor.client_environment()
-                self.assertEqual(env['FNA_WIN32_IGNORE_WM_PAINT'],'1')
-                self.assertEqual(env['BOX64_DYNAREC_STRONGMEM'],strong)
-                self.assertEqual(env['BOX64_DYNAREC_WEAKBARRIER'],weak)
-                self.assertEqual(env['BOX64_DYNAREC_BIGBLOCK'],'0')
-                self.assertEqual(env['BOX64_SHOWSEGV'],'1')
-                self.assertEqual(env['BOX64_SHOWBT'],'0')
-                self.assertIn('trace+loaddll',env['WINEDEBUG'])
-                self.assertNotIn('BOX64_SHOWSEGV',supervisor.setup_environment())
-                self.assertNotIn('trace+loaddll',supervisor.setup_environment()['WINEDEBUG'])
-                for baseline in (supervisor.env,supervisor.setup_environment(),
-                                 supervisor.dotnet_environment('client-dotnet-check-host.log')):
-                    self.assertNotIn('FNA_WIN32_IGNORE_WM_PAINT',baseline)
-                    self.assertEqual(baseline['BOX64_DYNAREC_STRONGMEM'],'1')
-                    self.assertEqual(baseline['BOX64_DYNAREC_WEAKBARRIER'],'1')
-                # Even after constructing the experimental game environment,
-                # actual wineboot and cmd preflight calls must use the baseline.
-                supervisor.run=Mock()
-                supervisor.prepare_prefix()
-                for command in supervisor.run.call_args_list:
-                    effective=command.kwargs.get('env') or supervisor.env
-                    self.assertEqual(effective['BOX64_DYNAREC_STRONGMEM'],'1')
-                    self.assertEqual(effective['BOX64_DYNAREC_WEAKBARRIER'],'1')
-                self.assertIn('mscoree=b',env['WINEDLLOVERRIDES'].split(';'))
-                report=json.loads((runner.LOGS/'client-compatibility.json').read_text())
-                self.assertEqual(report['memory_compatibility'],choice is True)
-                self.assertEqual(report['scope'],'game_launch_only')
-                self.assertEqual(report['environment']['BOX64_DYNAREC_STRONGMEM'],strong)
-                self.assertNotIn('DOTNET_TieredCompilation',env)
-        desktop=runner.Supervisor(dict(self.request,mode='desktop',client_memory_compatibility=True))
-        self.assertEqual(desktop.env['BOX64_DYNAREC_STRONGMEM'],'1')
-        self.assertFalse(desktop.status['memory_compatibility'])
-        with self.assertRaisesRegex(ValueError,'Invalid memory compatibility'):
-            runner.Supervisor(dict(self.request,client_memory_compatibility='false'))
 
     def test_setup_kill_does_not_relabel_old_game_crash_as_current(self):
         for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json','client-health.log'):
