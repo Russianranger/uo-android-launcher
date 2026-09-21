@@ -168,6 +168,10 @@ class Supervisor:
 
     def client_environment(self):
         env=self.dotnet_environment('client-dotnet-host.log')
+        # This runtime predates Box64 #4405: CALLRET=2 can return into a
+        # recycled translation after code invalidation. Use the jump table
+        # for game returns; leave wineboot, preflight and services unchanged.
+        env['BOX64_DYNAREC_CALLRET']='0'
         # Retain the FNA hint, but TazUO replaces that filter. It did not solve
         # the observed render-list crash; see the exact-binary investigation.
         env['FNA_WIN32_IGNORE_WM_PAINT']='1'
@@ -197,11 +201,12 @@ class Supervisor:
             'external_health_log':'client-health.log',
             'scope':'game_launch_only',
             'window_repaint_policy':'fna_hint_set_client_filter_unverified',
+            'translated_returns':'jump_table_workaround_box64_4405',
             'render_trace':self.status.get('render_trace',{}),
             'attempt_started_utc':self.status['attempt_started_utc'],
             'environment':{key:env[key] for key in (
                 'BOX64_DYNAREC_STRONGMEM','BOX64_DYNAREC_WEAKBARRIER','BOX64_DYNAREC_BIGBLOCK',
-                'BOX64_DYNAREC_SAFEFLAGS','BOX64_SHOWSEGV','BOX64_SHOWBT','WINEDEBUG','FNA_WIN32_IGNORE_WM_PAINT')},
+                'BOX64_DYNAREC_SAFEFLAGS','BOX64_DYNAREC_CALLRET','BOX64_SHOWSEGV','BOX64_SHOWBT','WINEDEBUG','FNA_WIN32_IGNORE_WM_PAINT')},
             'validation':'Experimental mitigation; native crash cause not established',
         })
         return env

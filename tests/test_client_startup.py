@@ -23,6 +23,23 @@ class StartupTests(unittest.TestCase):
         (runner.CLIENT/'settings.json').write_text('{}')
         for name in ('tiledata.mul','map0.mul','cliloc.enu'):(runner.CLIENT/name).touch()
 
+    def test_game_returns_use_jump_table_without_changing_setup_or_jit(self):
+        for renderer in ('turnip','virgl','software'):
+            supervisor=runner.Supervisor(dict(self.request,renderer=renderer))
+            baseline=dict(supervisor.env)
+            game=supervisor.client_environment()
+            self.assertEqual(game['BOX64_DYNAREC_CALLRET'],'0')
+            self.assertEqual(supervisor.env,baseline)
+            self.assertEqual(supervisor.setup_environment().get('BOX64_DYNAREC_CALLRET'),
+                             baseline.get('BOX64_DYNAREC_CALLRET'))
+            self.assertEqual(supervisor.dotnet_environment('preflight.log').get('BOX64_DYNAREC_CALLRET'),
+                             baseline.get('BOX64_DYNAREC_CALLRET'))
+            self.assertNotIn('DOTNET_TieredCompilation',game)
+            self.assertEqual(game['BOX64_DYNAREC_STRONGMEM'],baseline['BOX64_DYNAREC_STRONGMEM'])
+            report=json.loads((runner.LOGS/'client-compatibility.json').read_text())
+            self.assertEqual(report['environment']['BOX64_DYNAREC_CALLRET'],'0')
+            self.assertEqual(report['translated_returns'],'jump_table_workaround_box64_4405')
+
     def test_render_trace_only_preloads_helper_for_a_verified_patch(self):
         supervisor=runner.Supervisor(self.request)
         supervisor.root=runner.SESSION
