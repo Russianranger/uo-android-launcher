@@ -18,13 +18,14 @@ runner.LOGS=root/'logs';runner.LOGS.mkdir(exist_ok=True)
 wine_root=root.parent/'dotnet-wine'
 supervisor=runner.Supervisor({'mode':'client','renderer':'turnip','resolution':'1280x720','display_fps':60})
 # The host uses Mesa Vulkan instead of Android's Turnip library. Keep the
-# production game environment, including the FNA policy and managed loader.
+# production managed-loader environment. Paint hints below are controlled
+# research variants: TazUO replaces this FNA filter, so FEX does not set the hint.
 supervisor.env.update(WINEPREFIX=str(wine_root/'prefix'),DISPLAY=os.environ['DISPLAY'],
                       XAUTHORITY=os.environ.get('XAUTHORITY',''))
 for key in ('VK_ICD_FILENAMES','VK_DRIVER_FILES','MESA_VK_WSI_DEBUG'):
     supervisor.env.pop(key,None)
 env=supervisor.client_environment()
-assert env['FNA_WIN32_IGNORE_WM_PAINT']=='1'
+assert 'FNA_WIN32_IGNORE_WM_PAINT' not in env
 assert 'DOTNET_STARTUP_HOOKS' not in env
 env['DOTNET_HOST_TRACEFILE']=env['COREHOST_TRACEFILE']='Z:'+str(root/'logs/host.log').replace('/','\\')
 env['FNA_PLATFORM_BACKEND']='SDL3'
@@ -32,7 +33,7 @@ wine=wine_root/'wine/bin/wine'
 try:
     for name,policy,expected,marker,args in (
         ('immediate','0',23,'FNA_PAINT_REENTRANCY_REPRODUCED',[]),
-        ('queued',env['FNA_WIN32_IGNORE_WM_PAINT'],0,'FNA_PAINT_SERIALIZED_OK',[]),
+        ('queued','1',0,'FNA_PAINT_SERIALIZED_OK',[]),
         ('client-filter-original','0',0,'TAZUO_FILTER_REPLACEMENT_OK policy=0',['--tazuo-filter']),
         ('client-filter-queued','1',0,'TAZUO_FILTER_REPLACEMENT_OK policy=1',['--tazuo-filter'])):
         with (runner.LOGS/(name+'.log')).open('wb') as output:

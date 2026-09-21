@@ -45,3 +45,7 @@ The CI gate runs Windows x64 .NET 10.0.8, repeated dynamic-method JIT/compacting
 - [Bannerhub component labels](https://github.com/The412Banner/Nightlies/blob/main/wine_containers.json) include the screenshot's Wine label, but do not identify a reproducible redistributable build recipe for that exact package.
 
 The implementation follows the FEX/ARM64EC architecture. It is not an exact copy of the earlier GameHub runtime, and stability has not been inferred from the settings screenshots.
+
+## CoreCLR caution from upstream
+
+[FEX issue 5766](https://github.com/FEX-Emu/FEX/issues/5766) reports random CoreCLR corruption with the Linux FEX frontend and records a maintainer acknowledgement; it does not establish this Windows ARM64EC build's result. An [older CoreCLR support-tool issue](https://github.com/FEX-Emu/FEX/issues/4582) was closed after race-condition fixes. These reports are why the replacement has an actual Windows .NET test on ARM64, and why a passing test is not called proof of Memento gameplay stability.

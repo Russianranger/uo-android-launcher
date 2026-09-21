@@ -10,10 +10,24 @@ concurrency:
   cancel-in-progress: true
 jobs:
   verify:
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - name: Read bootstrap Wine startup logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 35553618584 --name fex-runtime-build --dir runtime-work/bootstrap
+          python3 - <<'PYLOG'
+          from pathlib import Path
+          for p in sorted(Path('runtime-work/bootstrap').rglob('*.log')):
+              print(p.name)
+              print(p.read_text(errors='replace')[-16000:])
+          PYLOG
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -70,22 +84,8 @@ jobs:
             runtime-work/sdl-probe/logs/
             runtime-work/fna-paint/logs/
             runtime-work/render-probe/logs/
-  box64-arm64:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install translator test toolchain
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y cmake build-essential python3 gcc-x86-64-linux-gnu libc6-dev-amd64-cross
-      - name: Exercise modified-code returns through pinned Box64 on ARM64
-        run: bash scripts/check-box64-arm64.sh
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: box64-return-verification
-          path: runtime-work/box64-return/logs/
+  fex-runtime:
+    uses: ./.github/workflows/fex-runtime.yml
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -177,7 +177,7 @@ jobs:
           path: app/build/reports/
   release:
     if: github.ref == 'refs/heads/main'
-    needs: [verify, apk, dotnet-wine, box64-arm64]
+    needs: [verify, apk, dotnet-wine, fex-runtime]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -187,6 +187,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: uo-memento-apk
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: fex-runtime-release
           path: dist
       - name: Preserve corresponding sources and publish the test release
         env:
@@ -198,8 +202,9 @@ jobs:
           echo '492043660b1370e1910c8b8ca2b93be1f637f4929034f575591f14e67e015243  dist/runtime-corresponding-sources.tar.gz' | sha256sum --check
           cp scripts/recover-preview.py dist/recover-preview.py
           git archive --format=zip --output=dist/UO-Memento-0.2.0-source.zip HEAD
-          (cd dist && sha256sum UO-Memento-0.2.0-Recovery.apk UO-Memento-0.2.0-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
+          (cd dist && sha256sum UO-Memento-0.2.0-Recovery.apk UO-Memento-0.2.0-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz client-runtime-arm64.tar.gz client-runtime-manifest.json wine-arm64ec-source.tar.gz fex-2510-source-with-submodules.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
           if ! gh release view v0.2.0 >/dev/null 2>&1; then
-            gh release create v0.2.0 --target "$GITHUB_SHA" --prerelease --title 'UO Memento 0.2.0 — Native Wine and FEX preview' --notes-file docs/RELEASE-NOTES.md
+            gh release create v0.2.0 --target "$GITHUB_SHA" --draft --prerelease --title 'UO Memento 0.2.0 — Native Wine and FEX preview' --notes-file docs/RELEASE-NOTES.md
           fi
-          gh release upload v0.2.0 dist/UO-Memento-0.2.0-Recovery.apk dist/UO-Memento-0.2.0-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py --clobber
+          gh release upload v0.2.0 dist/UO-Memento-0.2.0-Recovery.apk dist/UO-Memento-0.2.0-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
+          gh release edit v0.2.0 --draft=false

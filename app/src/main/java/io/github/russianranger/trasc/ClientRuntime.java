@@ -22,7 +22,7 @@ final class ClientRuntime {
     private volatile Process process;
     private GraphicsBridge graphics;
     private AudioBridge audio;
-    ClientRuntime(Context c){context=c;server=RuntimeManager.get(c);root=new File(server.work,"client/runtime-fex-v1");client=new File(server.work,"client/current");prefix=new File(server.work,"client/prefix-fex-v1");run=new File(server.home,"tmp/client/session");tmp=new File(server.home,"tmp/client/tmp");dotnet=new File(server.work,"client/dotnet");}
+    ClientRuntime(Context c){context=c;server=RuntimeManager.get(c);root=new File(server.work,"client/runtime-fex-v1");client=new File(server.work,"client/current");prefix=new File(server.work,"client/prefix-fex-v1");run=new File(server.home,"tmp/client/session");tmp=new File(server.home,"tmp/client/tmp");dotnet=new File(server.work,"client/dotnet");if(installed())status="FEX / ARM64EC runtime ready.";}
     boolean installed(){try{return validMarker(json(new File(root,"etc/memento-client-runtime.json")));}catch(Exception e){return false;}}
     static boolean validMarker(JSONObject marker){return marker.optInt("format")==2&&marker.optString("architecture").equals("arm64")&&marker.optString("runtime").equals(RUNTIME_ID);}
     boolean alive(){return process!=null&&process.isAlive();}
