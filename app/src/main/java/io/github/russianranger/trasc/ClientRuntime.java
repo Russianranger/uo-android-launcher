@@ -77,7 +77,7 @@ final class ClientRuntime {
         busy=true;
         try{
             String mode=options.optString("mode","client"),renderer=options.optString("renderer","turnip"),resolution=options.optString("resolution","1280x720"),presentation=options.optString("presentation_mode","native_surface");
-            int fps=options.optInt("display_fps",60);
+            int fps=options.optInt("display_fps",30);
             boolean gumpSpace=options.optBoolean("gump_space",resolution.equals("1280x720"));
             if(gumpSpace&&!resolution.equals("1280x720"))throw new IOException("The 1098x720 world viewport requires a 1280x720 display");
             if(!Arrays.asList("client","desktop").contains(mode)||!Arrays.asList("turnip","virgl","software").contains(renderer)||!Arrays.asList("800x600","1024x768","1280x720").contains(resolution)||!Arrays.asList("rfb","native_surface").contains(presentation)||(fps!=30&&fps!=60))throw new IOException("Unsupported client options");

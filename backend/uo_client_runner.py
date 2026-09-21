@@ -13,7 +13,7 @@ import client_graphics
 import client_render_trace
 import client_runtime
 from client_health import ClientHealth, prepare_render_progress
-from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, client_binary_report
+from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, frame_settings, client_binary_report
 
 SESSION=Path('/session')
 PREFIX=Path('/prefix')
@@ -163,6 +163,8 @@ class Supervisor:
             self.request.get('render_trace',False))
         self.update(sdl_graphics=report['sdl_graphics'],render_trace=report['render_trace'])
         renderer_settings(CLIENT,info,self.request['renderer'])
+        report['pacing']=frame_settings(CLIENT,info,self.request['display_fps'])
+        self.update(pacing=report['pacing'])
         report['graphics_driver']='Vulkan' if self.request['renderer']=='turnip' else 'OpenGL'
         if self.request.get('gump_space',False):
             report['layout']=viewport_settings(CLIENT,info)
@@ -231,6 +233,9 @@ class Supervisor:
         display=self.spawn(['Xtigervnc',':8','-geometry',request['resolution'],'-depth','24','-rfbport','-1',
                             '-rfbunixpath','/session/display.sock','-rfbunixmode','0600','-SecurityTypes','None',
                             '-nolisten','tcp','-auth',self.env['XAUTHORITY'],'-AlwaysShared','-FrameRate',str(request['display_fps']),
+                            # Native Surface already compares captured pixels;
+                            # the RFB socket is retained for input and fallback.
+                            '-CompareFB','0' if request.get('presentation_mode')=='native_surface' else '2',
                             '-desktop','UO Memento'],'client-display.log')
         for _ in range(150):
             if self.stopping():return

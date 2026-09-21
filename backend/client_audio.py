@@ -356,4 +356,5 @@ def prepare(folder, session):
         'pcm.trasc { type trasc }\n'
         'pcm.!default { type plug slave { pcm "trasc" format S16_LE rate 48000 channels 2 } }\n')
     return {'backend': 'alsa-audiotrack', 'protocol': 1, 'rate': 48000, 'channels': 2,
+            'minimum_period_ms': 20, 'minimum_buffer_ms': 80, 'start_threshold_ms': 20,
             'sha256': manifest['sha256']}

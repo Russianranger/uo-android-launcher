@@ -69,6 +69,7 @@ final class AudioBridge implements AutoCloseable {
         long submitted,nonzero,nextReport;boolean firstSignal;
         Connection(LocalSocket socket){this.socket=socket;}
         public void run(){
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
             AudioPcmSession session=new AudioPcmSession();
             try{session.run(socket.getInputStream(),socket.getOutputStream(),this);}
             catch(Exception e){if(!closed)record("stream_error="+e);}
@@ -100,6 +101,7 @@ final class AudioBridge implements AutoCloseable {
         public synchronized void start()throws IOException{if(track!=null){configureBuffer();track.play();record("stream_start queued_frames="+submitted+" start_frames="+threshold());}}
         public synchronized void stop(){if(track!=null){report("stream_stop");track.pause();track.flush();submitted=nonzero=0;}}
         private void report(String event){record(event+" written="+submitted+" played="+Integer.toUnsignedLong(track.getPlaybackHeadPosition())+
+            " queued_frames="+Math.max(0,submitted-Integer.toUnsignedLong(track.getPlaybackHeadPosition()))+
             " nonzero_samples="+nonzero+" underruns="+track.getUnderrunCount()+" state="+track.getPlayState()+" volume="+volume);}
         public synchronized int position()throws IOException {
             if(track==null)throw new IOException("Audio stream closed");

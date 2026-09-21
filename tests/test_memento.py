@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
-from uo_content import extract_zip, inspect_client, local_client_settings, swap_directory, renderer_settings, viewport_settings
+from uo_content import extract_zip, inspect_client, local_client_settings, swap_directory, renderer_settings, viewport_settings, frame_settings
 from engine import Engine
 
 
@@ -190,3 +190,18 @@ class WorldTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class FramePacingTests(unittest.TestCase):
+    def test_caps_game_preserves_settings_and_original_backup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);settings=root/'settings.json'; original={'fps':120,'password':'private','force_driver':2}
+            settings.write_text(json.dumps(original));info={'settings':'settings.json'}
+            self.assertEqual(frame_settings(root,info,30)['previous_game_fps'],120)
+            self.assertEqual(json.loads(settings.read_text()),dict(original,fps=30))
+            frame_settings(root,info,60)
+            self.assertEqual(json.loads(settings.read_text())['fps'],60)
+            self.assertEqual(json.loads((root/'settings.json.before-memento-pacing').read_text()),original)
+            for fps in (True,0,31,'60'):
+                with self.assertRaises(ValueError):frame_settings(root,info,fps)
+            self.assertEqual(json.loads(settings.read_text())['fps'],60)

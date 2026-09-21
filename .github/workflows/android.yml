@@ -22,6 +22,7 @@ jobs:
       - run: bash scripts/check-input.sh
       - run: bash scripts/check-logs.sh
       - run: bash scripts/check-client-readiness.sh
+      - run: bash scripts/check-audio.sh
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -71,12 +72,48 @@ jobs:
             runtime-work/fna-paint/logs/
             runtime-work/render-probe/logs/
   fex-runtime:
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: read
-    uses: ./.github/workflows/fex-runtime.yml
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Fetch exact device-tested Wine/FEX runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/fetch-stable-fex.py
+          docker import runtime-work/fex/release/client-runtime-arm64.tar.gz memento-fex:1
+          sudo apt-get update -qq
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+      - name: Verify retained runtime on ARM64 and PRoot
+        run: bash scripts/check-fex-runtime.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fex-runtime-verification
+          path: runtime-work/fex/logs/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fex-runtime-release
+          compression-level: 0
+          path: runtime-work/fex/release/
+  audio-bridge:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and exercise native ALSA bridge
+        run: bash scripts/build-audio.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audio-bridge
+          path: |
+            backend-assets/libasound_module_pcm_trasc.so
+            backend-assets/audio-bundle.json
   apk:
+    needs: [audio-bridge]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -99,6 +136,12 @@ jobs:
           dotnet-version: '10.0.x'
       - run: bash scripts/build-diagnostics.sh
       - run: python3 scripts/prepare-assets.py
+      - uses: actions/download-artifact@v4
+        with:
+          name: audio-bridge
+          path: backend-assets
+      - name: Package updated audio with the retained native bridges
+        run: python3 scripts/package-bridges.py
       - uses: actions/cache@v4
         id: signing
         if: github.ref == 'refs/heads/main'
@@ -143,7 +186,7 @@ jobs:
           grep -q "package: name='io.github.russianranger.uomemento.recovery'" runtime-work/badging.txt
           unzip -l app/build/outputs/apk/debug/app-debug.apk > runtime-work/apk-files.txt
           grep -q assets/Memento.Diagnostics.dll runtime-work/apk-files.txt
-          grep -q "versionCode='16'" runtime-work/badging.txt
+          grep -q "versionCode='17'" runtime-work/badging.txt
       - name: Keep the recovery certificate stable after its first release
         if: github.ref == 'refs/heads/main' && steps.anchor.outputs.exists == 'true'
         env:
@@ -186,15 +229,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.2.0-Recovery.apk
+          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.2.1-Recovery.apk
           mv dist/runtime-work/downloads/runtime-bridges.zip dist/runtime-bridges.zip
           curl -fL --retry 3 https://github.com/Russianranger/uo-android-launcher/releases/download/v0.1.0/runtime-corresponding-sources.tar.gz -o dist/runtime-corresponding-sources.tar.gz
           echo '492043660b1370e1910c8b8ca2b93be1f637f4929034f575591f14e67e015243  dist/runtime-corresponding-sources.tar.gz' | sha256sum --check
           cp scripts/recover-preview.py dist/recover-preview.py
-          git archive --format=zip --output=dist/UO-Memento-0.2.0-source.zip HEAD
-          (cd dist && sha256sum UO-Memento-0.2.0-Recovery.apk UO-Memento-0.2.0-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz client-runtime-arm64.tar.gz client-runtime-manifest.json wine-arm64ec-source.tar.gz fex-2510-source-with-submodules.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
-          if ! gh release view v0.2.0 >/dev/null 2>&1; then
-            gh release create v0.2.0 --target "$GITHUB_SHA" --draft --prerelease --title 'UO Memento 0.2.0 — Native Wine and FEX preview' --notes-file docs/RELEASE-NOTES.md
+          git archive --format=zip --output=dist/UO-Memento-0.2.1-source.zip HEAD
+          (cd dist && sha256sum UO-Memento-0.2.1-Recovery.apk UO-Memento-0.2.1-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz client-runtime-arm64.tar.gz client-runtime-manifest.json wine-arm64ec-source.tar.gz fex-2510-source-with-submodules.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
+          if ! gh release view v0.2.1 >/dev/null 2>&1; then
+            gh release create v0.2.1 --target "$GITHUB_SHA" --draft --prerelease --title 'UO Memento 0.2.1 — Audio and cooler frame pacing' --notes-file docs/RELEASE-NOTES.md
           fi
-          gh release upload v0.2.0 dist/UO-Memento-0.2.0-Recovery.apk dist/UO-Memento-0.2.0-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
-          gh release edit v0.2.0 --draft=false
+          gh release upload v0.2.1 dist/UO-Memento-0.2.1-Recovery.apk dist/UO-Memento-0.2.1-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
+          gh release edit v0.2.1 --draft=false

@@ -1,20 +1,25 @@
-# UO Memento Recovery 0.2.0
+# UO Memento Recovery 0.2.1
 
-The client now uses **native ARM64 Wine with FEX ARM64EC**. This replaces Box64 and x64 Wine, following the architecture of the previously reported Bannerhub setup. It is a new runtime preview, not a claim that long-session Thor stability has been established.
+Audio buffering and cooler frame pacing for the Wine/FEX runtime that now reaches the world reliably on Thor. The Wine/FEX binaries, original graphics DLLs and Turnip driver are retained exactly from 0.2.0.
 
 ## Update
 
-1. Save/stop the realm and stop the client. Install this APK over **UO Memento Recovery**, keeping app data.
-2. In **Client**, press **Install FEX runtime** once. The new runtime and Windows prefix are separate from the previous installation. Do not import the old TRASC client-runtime archive into this version.
-3. Start the realm and launch TazUO with **Turnip 26 · Vulkan**, **Native Surface**, **1280×720**, and **1098×720 world + gump space**.
-4. Start with SDL replacement, render tracing and detailed managed diagnostics **OFF**. Previous recognized patches are restored automatically from their backups.
+1. Save/stop the realm and stop the client, then install this APK over **UO Memento Recovery**, keeping app data.
+2. **Do not reinstall the FEX runtime.** The updated audio bridge is included in the APK. Existing imports, saves and controller mappings remain in place.
+3. Launch with **Turnip / Native Surface**, **30 FPS · cooler**, audio enabled, and tracing/SDL replacement off. Keep **1280×720 / 1098×720 world + gump space**.
+4. Compare audio, responsiveness and temperature over a similar 15–20 minute session. **60 FPS · smoother** remains selectable and its choice persists after restart.
 
-Imported client files, .NET downloads, character profiles, server saves and controller mappings are preserved. No server rebuild or client reimport is required. The old runtime/prefix remain on disk, but are not used. Support logs now identify native Wine and both FEX modules by architecture and hash.
+## Changes
 
-## Runtime and verification
+- The frame target now applies to TazUO's own `fps` setting and display capture together. Upgrades start at 30 FPS once; an explicit later 60 FPS selection is respected. The original settings file is backed up before pacing changes.
+- Native Surface disables TigerVNC's redundant framebuffer comparison. The separate RFB input connection and display fallback remain available; the native bridge still compares exact pixels.
+- The native ALSA bridge negotiates a minimum 20 ms period and 80 ms buffer. Android primes up to 20 ms before playback, bounded by the producer ring, and the playback worker uses audio thread priority. Sample rate, channels and playback clock remain unchanged.
+- Audio logs include queue depth for the next comparison.
 
-The replacement is built on ARM64 from pinned Wine ARM64EC and FEX sources. Its installation is checked for native ARM64 Wine and ARM64/ARM64EC FEX modules. Windows x64 .NET 10.0.8, JIT/GC/thread/vector work, and the real TazUO 5.2 SDL/FNA3D Vulkan resource test are release gates, directly and under Linux PRoot. Existing application, controller, import/backup, layout, server compilation, APK packaging and signing checks remain required.
+The supplied 0.2.0 session stopped cleanly. Its audio log recorded 42 underruns; a later active display interval averaged about 23 new frames/s versus 46 captures/s. These are transport counts, not measured game FPS. Underruns support a buffering problem, but do not prove that every audible distortion has the same cause.
 
-ARM64 CI uses software Vulkan and Linux PRoot. Android PRoot, Adreno/Turnip rendering, audio/controller interaction and a sustained Memento world session still require device testing. The exact GameHub Wine 10.6/FEX date and Turnip 25 combination has not been reproduced; see [the component comparison](RUNTIME-COMPARISON.md).
+## Verification and limits
 
-The release includes the separate client runtime and manifest, full Wine/FEX sources, native-bridge corresponding sources and the APK source archive.
+Release checks cover actual ARM64 ALSA S16/float conversion, exact stereo sample order with short writes and backpressure, natural drain, bounded Android priming, settings migration, UI, APK packaging/signature continuity, and the retained .NET 10/FEX runtime directly and under PRoot.
+
+Audio clarity, sustained responsiveness and temperature improvement need another Thor session. No specific FPS gain or return to low-50°C temperatures is claimed. APK and native-bridge sources are included; the runtime and its corresponding Wine/FEX sources are the checksum-verified 0.2.0 assets.
