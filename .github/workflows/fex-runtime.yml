@@ -1,0 +1,47 @@
+name: Build and verify native Wine FEX runtime
+on:
+  push:
+    branches: ['codex/0.2.0-fex-runtime']
+    paths: ['client-runtime/**', 'scripts/check-fex-runtime.sh', '.github/workflows/fex-runtime.yml', 'tests/fex-probe/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fex:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: client-runtime
+          target: runtime
+          load: true
+          tags: memento-fex:1
+          cache-from: type=gha,scope=memento-fex
+          cache-to: type=gha,mode=max,scope=memento-fex
+      - name: Run Windows .NET 10 x64 on ARM64 Wine and FEX
+        run: bash scripts/check-fex-runtime.sh
+      - uses: docker/build-push-action@v6
+        with:
+          context: client-runtime
+          target: sources
+          outputs: type=local,dest=runtime-work/fex/sources
+          cache-from: type=gha,scope=memento-fex
+      - name: Export the verified image
+        run: |
+          container=$(docker create memento-fex:1)
+          docker export "$container" -o runtime-work/fex/rootfs.tar
+          docker rm "$container"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fex-runtime-build
+          path: |
+            runtime-work/fex/logs/
+            runtime-work/fex/sources/
+            runtime-work/fex/rootfs.tar
