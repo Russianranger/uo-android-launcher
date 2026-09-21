@@ -144,11 +144,10 @@ SND_PCM_PLUGIN_DEFINE_FUNC(trasc) {
         (err = snd_pcm_ioplug_set_param_list(&p->io, SND_PCM_IOPLUG_HW_FORMAT, 1, format)) < 0 ||
         (err = snd_pcm_ioplug_set_param_minmax(&p->io, SND_PCM_IOPLUG_HW_CHANNELS, 2, 2)) < 0 ||
         (err = snd_pcm_ioplug_set_param_minmax(&p->io, SND_PCM_IOPLUG_HW_RATE, 48000, 48000)) < 0 ||
-        /* Wine requests four periods. A 20 ms minimum gives its native ALSA
-         * mixer an 80 ms ring instead of 40 ms, tolerating PRoot scheduling
-         * jitter without changing sample rate or inventing playback progress. */
-        (err = snd_pcm_ioplug_set_param_minmax(&p->io, SND_PCM_IOPLUG_HW_PERIOD_BYTES, 3840, 32768)) < 0 ||
-        (err = snd_pcm_ioplug_set_param_minmax(&p->io, SND_PCM_IOPLUG_HW_BUFFER_BYTES, 15360, 192000)) < 0 ||
+        /* Restore 0.2.0 negotiation: Wine's 10 ms request yields a 40 ms
+         * four-period ring. The 20/80 ms experiment regressed device audio. */
+        (err = snd_pcm_ioplug_set_param_minmax(&p->io, SND_PCM_IOPLUG_HW_PERIOD_BYTES, 128, 32768)) < 0 ||
+        (err = snd_pcm_ioplug_set_param_minmax(&p->io, SND_PCM_IOPLUG_HW_BUFFER_BYTES, 256, 192000)) < 0 ||
         (err = snd_pcm_ioplug_set_param_minmax(&p->io, SND_PCM_IOPLUG_HW_PERIODS, 2, 16)) < 0) {
         snd_pcm_ioplug_delete(&p->io); return err;
     }

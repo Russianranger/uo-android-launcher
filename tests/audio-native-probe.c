@@ -6,7 +6,7 @@
 #include <unistd.h>
 #define OK(expr) do { int e=(expr); if(e<0){fprintf(stderr,"%s: %s\n",#expr,snd_strerror(e));exit(1);} } while(0)
 int main(int argc,char **argv) {
-    (void)argc;
+    int count=argc>2?atoi(argv[2]):24000;
     snd_pcm_t *pcm; snd_pcm_hw_params_t *hw; unsigned period_us=10000,periods=4,rate=48000;
     int floating=argv[1][0]=='f';
     OK(snd_pcm_open(&pcm,"default",SND_PCM_STREAM_PLAYBACK,SND_PCM_NONBLOCK));
@@ -20,15 +20,15 @@ int main(int argc,char **argv) {
     OK(snd_pcm_hw_params(pcm,hw));
     snd_pcm_uframes_t buffer,period;
     OK(snd_pcm_hw_params_get_buffer_size(hw,&buffer)); OK(snd_pcm_hw_params_get_period_size(hw,&period,NULL));
-    if(period<960||buffer<3840){fprintf(stderr,"Too little jitter tolerance: %lu %lu\n",period,buffer);return 2;}
+    if(period!=480||buffer!=1920){fprintf(stderr,"Unexpected Wine negotiation: %lu %lu\n",period,buffer);return 2;}
     snd_pcm_sw_params_t *sw; snd_pcm_sw_params_alloca(&sw);
     OK(snd_pcm_sw_params_current(pcm,sw)); OK(snd_pcm_sw_params_set_start_threshold(pcm,sw,1)); OK(snd_pcm_sw_params(pcm,sw));
     OK(snd_pcm_prepare(pcm));
     short samples[48000];float floats[48000];
     for(int i=0;i<24000;i++){short v=(short)((i%401-200)*64);samples[i*2]=v;samples[i*2+1]=-v;floats[i*2]=v/32768.f;floats[i*2+1]=-v/32768.f;}
     size_t done=0;int retries=0;
-    while(done<24000){
-        size_t n=24000-done;if(n>480)n=480;
+    while(done<(size_t)count){
+        size_t n=(size_t)count-done;if(n>480)n=480;
         const void *data=floating?(const void *)(floats+2*done):(const void *)(samples+2*done);
         snd_pcm_sframes_t sent=snd_pcm_writei(pcm,data,n);
         if(sent==-EAGAIN){if(++retries>10000)return 3;usleep(1000);continue;}

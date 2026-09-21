@@ -7,6 +7,7 @@ import re
 import shutil
 import stat
 import struct
+import tempfile
 import urllib.request
 import zipfile
 
@@ -20,12 +21,25 @@ MEMENTO_CLIENT_VERSION = '7.0.15.1'
 def write_json(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(path.name + '.new')
-    with temp.open('w') as out:
-        json.dump(data, out, indent=2)
-        out.flush()
-        os.fsync(out.fileno())
-    os.replace(temp, path)
+    # A unique sibling cannot follow a stale .new symlink after an interrupted
+    # write. Sync both contents and the rename before returning to the caller.
+    fd, name = tempfile.mkstemp(prefix=path.name + '.new-', dir=path.parent)
+    temp = Path(name)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as out:
+            json.dump(data, out, indent=2, allow_nan=False)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temp, path)
+        sync_directory(path.parent)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def sync_directory(path):
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try: os.fsync(fd)
+    finally: os.close(fd)
 
 
 def confined(root, relative):
@@ -38,6 +52,63 @@ def confined(root, relative):
     if not path.resolve().is_relative_to(root):
         raise ValueError('File path escapes workspace')
     return path
+
+
+SETTINGS_BACKUPS = ('.memento-last-good', '.before-memento-pacing', '.before-memento')
+PROFILE_BACKUPS = ('.memento-last-good', '.before-memento-layout')
+
+
+def read_json_object(path):
+    def invalid_constant(_): raise ValueError('Non-finite JSON value')
+    data = json.loads(path.read_text(encoding='utf-8-sig'), parse_constant=invalid_constant)
+    if not isinstance(data, dict): raise ValueError('Expected a JSON object')
+    return data
+
+
+def configuration_json(root, path, suffixes):
+    """Read valid configuration or select a valid backup, without changing files."""
+    root = Path(root).resolve()
+    path = confined(root, path.relative_to(root))
+    exists = path.exists()
+    if exists:
+        try: return read_json_object(path), None
+        except (ValueError, UnicodeError): pass
+    backups = [confined(root, path.with_name(path.name + suffix).relative_to(root)) for suffix in suffixes]
+    # Stable ties favor last-good, then the newer pacing migration backup.
+    backups = sorted((p for p in backups if p.is_file()), key=lambda p:p.stat().st_mtime_ns, reverse=True)
+    for backup in backups:
+        try: data = read_json_object(backup)
+        except (ValueError, UnicodeError): continue
+        return data, backup.name[len(path.name):]
+    if exists or backups:
+        raise ValueError(path.name + ' is damaged (a JSON object is required), and no valid recovery backup was found. '
+                         'The original file was kept. Restore this file from your client backup before launching.')
+    return {}, None
+
+
+def save_configuration(root, path, data, recovered_from=None):
+    root = Path(root).resolve()
+    path = confined(root, path.relative_to(root))
+    checkpoint = confined(root, path.with_name(path.name + '.memento-last-good').relative_to(root))
+    if recovered_from and path.exists():
+        # Keep the exact damaged bytes locally; never export configuration or
+        # credentials. Exclusive creation preserves earlier interrupted copies.
+        fd, name = tempfile.mkstemp(prefix=path.name + '.interrupted-', dir=path.parent)
+        with os.fdopen(fd, 'wb') as out, path.open('rb') as source:
+            shutil.copyfileobj(source, out)
+            out.flush()
+            os.fsync(out.fileno())
+        sync_directory(path.parent)
+    write_json(checkpoint, data)
+    write_json(path, data)
+
+
+def checkpoint_client_settings(root, metadata):
+    """Snapshot only a validated file; a failed game write cannot poison backup."""
+    root = Path(root).resolve()
+    path = confined(root, metadata['settings'])
+    backup = confined(root, path.with_name(path.name + '.memento-last-good').relative_to(root))
+    write_json(backup, read_json_object(path))
 
 
 def extract_zip(archive, destination, max_bytes=MAX_BYTES):
@@ -133,12 +204,10 @@ def local_client_settings(root, metadata):
     missing = sorted({'tiledata.mul', 'map0.mul', 'cliloc.enu'} - files)
     if missing:
         raise ValueError('Imported UO data directory is incomplete; missing: ' + ', '.join(missing))
-    settings = json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else {}
-    if not isinstance(settings, dict):
-        raise ValueError('The imported settings.json must contain a JSON object')
+    settings, recovered = configuration_json(root, path, SETTINGS_BACKUPS)
     backup = confined(root, path.with_suffix('.json.before-memento').relative_to(root))
     if path.exists() and not backup.exists():
-        shutil.copy2(path, backup)
+        write_json(backup, settings)
     relative = str(assets.relative_to(root)).replace('/', '\\')
     directory = 'D:\\' + ('' if relative == '.' else relative)
     version_source = 'settings.json'
@@ -149,9 +218,9 @@ def local_client_settings(root, metadata):
     settings.pop('ultimaonline', None)
     settings.update(ip='127.0.0.1', port=2593, ultimaonlinedirectory=directory,
                     reconnect=False, autologin=False, skip_login_screen=False)
-    write_json(path, settings)
+    save_configuration(root, path, settings, recovered)
     # Explicit allowlist: support bundles must never include saved credentials.
-    return {'settings':metadata['settings'], 'ultimaonlinedirectory':directory,
+    return {'settings':metadata['settings'], 'settings_recovery':recovered, 'ultimaonlinedirectory':directory,
             'clientversion':settings['clientversion'], 'version_source':version_source,
             'required_assets':sorted({'tiledata.mul', 'map0.mul', 'cliloc.enu'}),
             'ip':'127.0.0.1', 'port':2593}
@@ -175,7 +244,7 @@ def frame_settings(root, metadata, fps):
     if not isinstance(settings, dict):
         raise ValueError('Client settings must contain a JSON object')
     backup = confined(root, path.with_suffix('.json.before-memento-pacing').relative_to(Path(root).resolve()))
-    if not backup.exists():shutil.copy2(path, backup)
+    if not backup.exists():write_json(backup, settings)
     previous = settings.get('fps')
     settings['fps'] = fps
     write_json(path, settings)
@@ -207,19 +276,18 @@ def viewport_settings(root, metadata):
     pending = []
     for target in targets:
         target = confined(root, target.relative_to(root))
-        profile = json.loads(target.read_text(encoding='utf-8-sig')) if target.exists() else {}
-        if not isinstance(profile, dict):
-            raise ValueError('The character profile must contain a JSON object: ' + str(target.relative_to(root)))
+        profile, recovered = configuration_json(root, target, PROFILE_BACKUPS)
         backup = confined(root, target.with_suffix('.json.before-memento-layout').relative_to(root))
-        pending.append((target, backup, dict(profile, **layout)))
+        pending.append((target, backup, profile, recovered))
     # Validate all profile paths/JSON first; never reset unrelated character data.
-    for target, backup, profile in pending:
-        if target.exists() and not backup.exists():shutil.copy2(target, backup)
-        write_json(target, profile)
+    for target, backup, profile, recovered in pending:
+        if target.exists() and not backup.exists():write_json(backup, profile)
+        save_configuration(root, target, dict(profile, **layout), recovered)
     settings.update(window_size={'X':1280,'Y':720},window_position={'X':0,'Y':0},is_win_maximized=False)
     write_json(path, settings)
     return {'window':[1280,720], 'world_viewport':[1098,720], 'gump_space_width':182,
-            'profiles_updated':len(targets), 'profile_backup_suffix':'.json.before-memento-layout'}
+            'profiles_updated':len(targets), 'profiles_recovered':sum(bool(p[3]) for p in pending),
+            'profile_backup_suffix':'.json.before-memento-layout'}
 
 
 def client_binary_report(root, metadata):

@@ -11,5 +11,5 @@ python3 - <<'PY'
 import hashlib,json,pathlib,struct
 p=pathlib.Path('backend-assets/libasound_module_pcm_trasc.so');data=p.read_bytes()
 assert data[:5]==b'\x7fELF\x02' and struct.unpack_from('<H',data,18)[0]==183
-p.with_name('audio-bundle.json').write_text(json.dumps({'protocol':1,'architecture':'arm64-glibc','buffer_policy':2,'minimum_period_frames':960,'minimum_buffer_frames':3840,'sha256':hashlib.sha256(data).hexdigest()},indent=2)+'\n')
+p.with_name('audio-bundle.json').write_text(json.dumps({'protocol':1,'architecture':'arm64-glibc','buffer_policy':3,'minimum_period_frames':32,'minimum_buffer_frames':64,'sha256':hashlib.sha256(data).hexdigest()},indent=2)+'\n')
 PY

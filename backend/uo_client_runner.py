@@ -13,7 +13,7 @@ import client_graphics
 import client_render_trace
 import client_runtime
 from client_health import ClientHealth, prepare_render_progress
-from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, frame_settings, client_binary_report
+from uo_content import confined, write_json, local_client_settings, renderer_settings, viewport_settings, frame_settings, client_binary_report, checkpoint_client_settings
 
 SESSION=Path('/session')
 PREFIX=Path('/prefix')
@@ -169,6 +169,7 @@ class Supervisor:
         if self.request.get('gump_space',False):
             report['layout']=viewport_settings(CLIENT,info)
         report['client_binary']=client_binary_report(CLIENT,info)
+        checkpoint_client_settings(CLIENT,info)
         write_json(LOGS/'client-config.json',report)
 
     def client_environment(self):
@@ -285,6 +286,10 @@ class Supervisor:
                     if code:raise RuntimeError('TazUO/Wine exited with code '+str(code)+'. Export logs for diagnosis.')
                     if request['mode']=='client' and time.monotonic()-started<15:
                         raise RuntimeError('TazUO closed during startup (exit code 0). Export support logs from the Journal.')
+                    if request['mode']=='client':
+                        try:checkpoint_client_settings(CLIENT,request['client'])
+                        except (OSError,ValueError):
+                            self.update(settings_checkpoint='unavailable; previous valid backup retained')
                     break
                 health.sample()
                 time.sleep(.5)

@@ -186,7 +186,7 @@ jobs:
           grep -q "package: name='io.github.russianranger.uomemento.recovery'" runtime-work/badging.txt
           unzip -l app/build/outputs/apk/debug/app-debug.apk > runtime-work/apk-files.txt
           grep -q assets/Memento.Diagnostics.dll runtime-work/apk-files.txt
-          grep -q "versionCode='17'" runtime-work/badging.txt
+          grep -q "versionCode='18'" runtime-work/badging.txt
       - name: Keep the recovery certificate stable after its first release
         if: github.ref == 'refs/heads/main' && steps.anchor.outputs.exists == 'true'
         env:
@@ -229,15 +229,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.2.1-Recovery.apk
+          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-0.2.2-Recovery.apk
           mv dist/runtime-work/downloads/runtime-bridges.zip dist/runtime-bridges.zip
           curl -fL --retry 3 https://github.com/Russianranger/uo-android-launcher/releases/download/v0.1.0/runtime-corresponding-sources.tar.gz -o dist/runtime-corresponding-sources.tar.gz
           echo '492043660b1370e1910c8b8ca2b93be1f637f4929034f575591f14e67e015243  dist/runtime-corresponding-sources.tar.gz' | sha256sum --check
           cp scripts/recover-preview.py dist/recover-preview.py
-          git archive --format=zip --output=dist/UO-Memento-0.2.1-source.zip HEAD
-          (cd dist && sha256sum UO-Memento-0.2.1-Recovery.apk UO-Memento-0.2.1-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz client-runtime-arm64.tar.gz client-runtime-manifest.json wine-arm64ec-source.tar.gz fex-2510-source-with-submodules.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
-          if ! gh release view v0.2.1 >/dev/null 2>&1; then
-            gh release create v0.2.1 --target "$GITHUB_SHA" --draft --prerelease --title 'UO Memento 0.2.1 — Audio and cooler frame pacing' --notes-file docs/RELEASE-NOTES.md
+          git archive --format=zip --output=dist/UO-Memento-0.2.2-source.zip HEAD
+          (cd dist && sha256sum UO-Memento-0.2.2-Recovery.apk UO-Memento-0.2.2-source.zip runtime-bridges.zip runtime-corresponding-sources.tar.gz client-runtime-arm64.tar.gz client-runtime-manifest.json wine-arm64ec-source.tar.gz fex-2510-source-with-submodules.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
+          if ! gh release view v0.2.2 >/dev/null 2>&1; then
+            gh release create v0.2.2 --target "$GITHUB_SHA" --draft --prerelease --title 'UO Memento 0.2.2 — Settings recovery and audio rollback' --notes-file docs/RELEASE-NOTES.md
           fi
-          gh release upload v0.2.1 dist/UO-Memento-0.2.1-Recovery.apk dist/UO-Memento-0.2.1-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
-          gh release edit v0.2.1 --draft=false
+          gh release upload v0.2.2 dist/UO-Memento-0.2.2-Recovery.apk dist/UO-Memento-0.2.2-source.zip dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
+          gh release edit v0.2.2 --draft=false

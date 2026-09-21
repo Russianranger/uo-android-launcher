@@ -15,7 +15,7 @@ public final class ClientRuntimeAssetsHostTest {
         +"assert pathlib.Path(uo_client_runner.__file__).parent.resolve()==root; "
         +"assert client_graphics.digest(root/client_graphics.ASSET)==client_graphics.FIXED_SDL; "
         +"audio=json.loads((root/'audio-bundle.json').read_text()); "
-        +"assert audio['buffer_policy']==2 and audio['minimum_period_frames']==960 and audio['minimum_buffer_frames']==3840; "
+        +"assert audio['buffer_policy']==3 and audio['minimum_period_frames']==32 and audio['minimum_buffer_frames']==64; "
         +"assert hashlib.sha256((root/'libasound_module_pcm_trasc.so').read_bytes()).hexdigest()==audio['sha256']; "
         +"print('DEPLOYED_CLIENT_IMPORT_OK',flush=True)";
 

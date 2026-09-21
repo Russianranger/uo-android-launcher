@@ -1,14 +1,14 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.2.1
+## Updating Recovery to 0.2.2
 
-This update improves audio buffering and matches TazUO's frame cap to display capture. It retains the exact **native ARM64 Wine + FEX ARM64EC** runtime from 0.2.0.
+This update repairs startup after interrupted TazUO settings writes and reverts the 0.2.1 audio buffering experiment. It retains the stable **native ARM64 Wine + FEX ARM64EC** runtime and the 30 FPS frame cap.
 
 1. Save/stop the realm and stop the client, then install the new APK over **UO Memento Recovery**. Keep app data.
-2. **Already using 0.2.0? No runtime reinstall is needed.** The updated audio bridge is inside the APK. When upgrading from 0.1.x, select **Client → Install FEX runtime** once.
-3. Launch with **Turnip / Native Surface**, **30 FPS · cooler**, and **1280×720 with the 1098×720 world view**. Keep SDL replacement, render tracing and detailed diagnostics off. Select **60 FPS · smoother** for a separate comparison; the choice persists.
+2. **No runtime reinstall or client reimport is needed when a valid settings backup exists.** Launch automatically restores the newest valid backup, preserving the damaged file locally. Settings changed after that backup may need to be set again.
+3. Use **Turnip / Native Surface**, **30 FPS · cooler**, and **1280×720 with the 1098×720 world view**. Keep SDL replacement, render tracing and detailed diagnostics off.
 
-Imports, profiles, saves and controller mappings remain intact. No client reimport or server rebuild is needed. The supplied 0.2.0 Thor session exited cleanly; audio and temperature improvements still need device comparison. See [optimization evidence](docs/OPTIMIZATION-0.2.1.md), [runtime provenance](docs/RUNTIME-COMPARISON.md) and [release verification](docs/RELEASE-NOTES.md).
+The audio changes return buffering and worker scheduling to 0.2.0 behavior. Audio clarity and the reported device-wide recording freeze still need device validation; this release does not claim to fix the recorder freeze. See [release notes](docs/RELEASE-NOTES.md).
 
 ## 0.1.1 recovery build
 
