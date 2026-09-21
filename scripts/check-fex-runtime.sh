@@ -63,7 +63,9 @@ grep -q FNA_VULKAN_LIFETIME_OK /check/logs/graphics.log
 # Android's Bionic build and device kernel still need device validation.
 apt-get update -qq >/check/logs/proot-install.log 2>&1
 apt-get install -y --no-install-recommends build-essential libtalloc-dev gawk >>/check/logs/proot-install.log 2>&1
-make -C /check/proot/src -j4 PROOT_UNBUNDLE_LOADER=/unused >/check/logs/proot-build.log 2>&1
+# All guest Linux processes are ARM64; Windows x86 is handled by FEX in Wine.
+# Debian's ARM64 GCC cannot build PRoot's unused ARM32 loader via -m32.
+make -C /check/proot/src -j4 HAS_LOADER_32BIT= PROOT_UNBUNDLE_LOADER=/unused >/check/logs/proot-build.log 2>&1
 /opt/wine/bin/wineserver -k || true
 /opt/wine/bin/wineserver -w
 export WINEPREFIX=/tmp/fex-prefix-proot
