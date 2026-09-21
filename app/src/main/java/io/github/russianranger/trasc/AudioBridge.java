@@ -69,7 +69,8 @@ final class AudioBridge implements AutoCloseable {
         long submitted,nonzero,nextReport;boolean firstSignal;
         Connection(LocalSocket socket){this.socket=socket;}
         public void run(){
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
+            try{android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);}
+            catch(SecurityException denied){record("audio_priority_unavailable");}
             AudioPcmSession session=new AudioPcmSession();
             try{session.run(socket.getInputStream(),socket.getOutputStream(),this);}
             catch(Exception e){if(!closed)record("stream_error="+e);}
