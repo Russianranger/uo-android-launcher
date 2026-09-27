@@ -54,9 +54,85 @@ public final class MainActivity extends Activity {
             runOnUiThread(()->{if(web!=null&&!isDestroyed())web.evaluateJavascript(script,null);});
         }catch(Exception ignored){}
     }
+    private JSONObject realm(String operation,JSONObject args)throws Exception {
+        JSONObject response=runtime.request(operation,args);
+        if(!response.getBoolean("ok"))throw new IOException(response.optString("error"));
+        return response.getJSONObject("result");
+    }
+    private void requireIdle(JSONObject state)throws Exception {
+        JSONArray jobs=state.getJSONArray("jobs");
+        for(int i=0;i<jobs.length();i++){
+            JSONObject job=jobs.getJSONObject(i);
+            if(java.util.Arrays.asList("queued","running").contains(job.optString("status")))
+                throw new IOException("Wait for the current realm task to finish: "+job.optString("message"));
+        }
+    }
+    private void awaitServer()throws Exception {
+        JSONObject state=realm("state",new JSONObject());requireIdle(state);
+        if(!state.optBoolean("mono_ready"))throw new IOException("Open Realm setup and prepare the Mono compiler first");
+        if(state.optBoolean("ready"))return;
+        String jobId=state.optBoolean("running")?null:realm("server_start",new JSONObject()).getString("id");
+        long deadline=android.os.SystemClock.elapsedRealtime()+660000;
+        while(android.os.SystemClock.elapsedRealtime()<deadline){
+            runtime.session.checkCancelled();state=realm("state",new JSONObject());
+            boolean jobDone=jobId==null;
+            if(jobId!=null){
+                JSONArray jobs=state.getJSONArray("jobs");boolean found=false;
+                for(int i=0;i<jobs.length();i++){
+                    JSONObject job=jobs.getJSONObject(i);if(!jobId.equals(job.optString("id")))continue;
+                    found=true;
+                    if("error".equals(job.optString("status")))throw new IOException(job.optString("error","Server startup failed. Open server.log."));
+                    jobDone="done".equals(job.optString("status"));break;
+                }
+                if(!found)throw new IOException("Server startup task disappeared. Open the Journal for logs.");
+            }
+            if(jobDone&&state.optBoolean("ready"))return;
+            if(jobDone&&!state.optBoolean("running"))throw new IOException("Server stopped before it was ready. Open server.log.");
+            Thread.sleep(500);
+        }
+        throw new IOException("Server is still starting. Check server.log; it has been left running.");
+    }
+    private void awaitClient(JSONObject options)throws Exception {
+        runtime.session.checkCancelled();
+        if(!client.alive())client.start(options);
+        long deadline=android.os.SystemClock.elapsedRealtime()+180000;
+        while(android.os.SystemClock.elapsedRealtime()<deadline){
+            runtime.session.checkCancelled();JSONObject state=client.state(),launch=state.optJSONObject("launch");
+            if(launch!=null&&launch.has("error"))throw new IOException(launch.optString("error"));
+            if(state.optBoolean("display_ready"))return;
+            if(!state.optBoolean("alive"))throw new IOException("Client stopped. Open the Journal for logs.");
+            Thread.sleep(500);
+        }
+        throw new IOException("Client is still preparing its display. Check the Journal, then use Return to client when ready.");
+    }
+    private JSONObject launchSession(boolean withClient,JSONObject options)throws Exception {
+        LaunchSequence.run(new LaunchSequence.Host(){
+            public void checkSetup(boolean includeClient)throws Exception {
+                if(!runtime.installed())throw new IOException("Open Realm setup and install the realm runtime first");
+                if(!new File(runtime.work,"server/WorldLinux.exe").isFile())throw new IOException("Open Realm setup and pull & compile the server first");
+                if(includeClient){
+                    if(!client.installed())throw new IOException("Open Client setup and install the FEX client runtime first");
+                    File metadata=new File(client.client,"memento-client.json");
+                    if(!metadata.isFile())throw new IOException("Open Client setup and import the complete Memento client first");
+                    if(!ClientRuntime.json(metadata).optBoolean("self_contained")&&!new File(client.dotnet,"dotnet.exe").isFile())throw new IOException("Open Client setup and prepare the required .NET runtime first");
+                    if(client.busy)throw new IOException("Finish the current client setup task first");
+                }
+            }
+            public void progress(String message)throws Exception {runtime.session.progress(message);}
+            public void openRuntime()throws Exception {runtime.start();}
+            public void awaitServer()throws Exception {MainActivity.this.awaitServer();}
+            public void awaitClient()throws Exception {MainActivity.this.awaitClient(options);}
+        },withClient);
+        if(withClient)runOnUiThread(()->{if(!isDestroyed())startActivity(new Intent(MainActivity.this,ClientActivity.class));});
+        return new JSONObject().put("message",runtime.session.status);
+    }
     final class Bridge {
         @JavascriptInterface public void call(String id,String operation,String input){submit(()->{
+            boolean guarded=false;
             try{JSONObject args=new JSONObject(input);Object result;
+                if(!java.util.Arrays.asList("native_state","client_native_state","state","logs","export_logs","controller_open","client_view","pick","export").contains(operation)){
+                    runtime.session.begin("Working · "+operation.replace('_',' '));guarded=true;
+                }
                 switch(operation){
                     case "native_state":result=runtime.nativeState();break;
                     case "client_native_state":result=client.state();break;
@@ -64,23 +140,27 @@ public final class MainActivity extends Activity {
                     case "runtime_start":service();runtime.start();result=runtime.nativeState();break;
                     case "runtime_stop":runtime.stop();if(!client.alive()&&!client.busy)stopService(new Intent(MainActivity.this,ServerService.class));result=runtime.nativeState();break;
                     case "client_runtime_online":service();result=client.installOnline();break;
+                    case "session_play":service();result=launchSession(true,args);break;
+                    case "server_start":service();result=launchSession(false,args);break;
                     case "client_start":service();result=client.start(args);break;
                     case "client_stop":client.stop();result=client.state();break;
                     case "client_view":if(!client.state().optBoolean("display_ready"))throw new IOException("Wait for the client display and controls to finish preparing");runOnUiThread(()->startActivity(new Intent(MainActivity.this,ClientActivity.class)));result=new JSONObject();break;
                     case "controller_open":runOnUiThread(()->{controller.reload();new ControllerDialog(MainActivity.this,controller,()->{}).show();reply(id,new JSONObject(),null);});return;
                     case "logs":result=runtime.logs(args.optString("name","runtime.log"));break;
                     case "export_logs":result=runtime.exportLogs();break;
-                    case "pick":runOnUiThread(()->pick(id,args.optString("kind","client")));return;
+                    case "pick":if(runtime.session.busy)throw new IOException("Finish the current launch or setup task first");runOnUiThread(()->pick(id,args.optString("kind","client")));return;
                     case "export":runOnUiThread(()->export(id,args.optString("path")));return;
                     default:
                         service();
                         synchronized(client){
                             if(java.util.Arrays.asList("import_client_zip","prepare_dotnet","pull_compile","restore_world").contains(operation)&&(client.alive()||client.busy))throw new IOException("Stop the client before changing its files or world");
+                            if(!"state".equals(operation))runtime.start();
                             JSONObject response=runtime.request(operation,args);if(!response.getBoolean("ok"))throw new IOException(response.optString("error"));result=response.get("result");
                         }
                 }
                 reply(id,result,null);
-            }catch(Exception e){runtime.recordFailure(operation,e);reply(id,null,e);}
+            }catch(Exception e){if(guarded)runtime.session.status=e.getMessage();runtime.recordFailure(operation,e);reply(id,null,e);}
+            finally{if(guarded)runtime.session.finish();}
         });}
     }
     private void pick(String id,String kind){
@@ -119,9 +199,10 @@ public final class MainActivity extends Activity {
         super.onActivityResult(request,code,data);if(request!=IMPORT&&request!=FOLDER&&request!=EXPORT)return;
         String id=pickerId,kind=pickerKind,path=exportPath;pickerId=null;if(id==null)return;
         if(code!=RESULT_OK||data==null||data.getData()==null){reply(id,null,new IOException("File selection cancelled"));return;}
-        Uri uri=data.getData();service();submit(()->{File temp=null;
+        Uri uri=data.getData();service();submit(()->{File temp=null;boolean guarded=false;
             try{
                 if(request==EXPORT){try(InputStream in=new FileInputStream(exportFile(path));OutputStream out=getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new IOException("Cannot write destination");byte[] b=new byte[1024*1024];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}reply(id,new JSONObject().put("message","File exported"),null);return;}
+                runtime.session.begin("Importing selected files…");guarded=true;
                 synchronized(client){
                     if(client.alive()||client.busy)throw new IOException("Stop the client before importing");
                     client.busy=true;
@@ -136,11 +217,12 @@ public final class MainActivity extends Activity {
                 else{
                     synchronized(client){
                         if(client.alive()||client.busy)throw new IOException("Stop the client before importing");
+                        runtime.start();
                         JSONObject response=runtime.request(kind.equals("world")?"restore_world":"import_client_zip",new JSONObject().put("file",temp.getName()));
                         if(!response.getBoolean("ok"))throw new IOException(response.optString("error"));reply(id,response.get("result"),null);temp=null;
                     }
                 }
-            }catch(Exception e){runtime.recordFailure("import_export",e);reply(id,null,e);}finally{if(temp!=null)temp.delete();}
+            }catch(Exception e){runtime.recordFailure("import_export",e);reply(id,null,e);}finally{if(temp!=null)temp.delete();if(guarded)runtime.session.finish();}
         });
     }
     @Override public void onBackPressed(){super.onBackPressed();}

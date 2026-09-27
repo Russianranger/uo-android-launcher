@@ -3,6 +3,8 @@ package io.github.russianranger.trasc;
 import android.app.*;
 import android.content.*;
 import android.os.*;
+import org.json.*;
+import java.io.IOException;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -26,14 +28,35 @@ public final class ServerService extends Service {
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         if(intent!=null&&STOP.equals(intent.getAction())&&stopping.compareAndSet(false,true))shutdown.execute(()->{
             RuntimeManager runtime=RuntimeManager.get(this);ClientRuntime client=ClientRuntime.get(this);
-            try{client.stop();}catch(Exception e){runtime.recordFailure("notification_client_stop",e);}
-            try{runtime.stop();}catch(Exception e){runtime.status=e.getMessage();runtime.recordFailure("notification_runtime_stop",e);}
+            boolean guarded=false;
+            try{
+                runtime.session.beginShutdown();guarded=true;
+                try{client.stop();}catch(Exception e){runtime.recordFailure("notification_client_stop",e);}
+                try{waitForRealmTask(runtime);runtime.stop();}catch(Exception e){runtime.status=e.getMessage();runtime.recordFailure("notification_runtime_stop",e);}
+            }catch(InterruptedException e){Thread.currentThread().interrupt();}
+            finally{if(guarded)runtime.session.finish();}
             new Handler(Looper.getMainLooper()).post(()->{
                 stopping.set(false);
                 if(!client.alive()&&!runtime.alive())stopSelf();
             });
         });
         return START_NOT_STICKY;
+    }
+    private void waitForRealmTask(RuntimeManager runtime)throws Exception {
+        long deadline=SystemClock.elapsedRealtime()+660000;
+        while(runtime.alive()){
+            JSONObject response=runtime.request("state",new JSONObject());
+            if(!response.getBoolean("ok"))throw new IOException(response.optString("error"));
+            JSONArray jobs=response.getJSONObject("result").getJSONArray("jobs");boolean pending=false;
+            for(int i=0;i<jobs.length();i++){
+                String status=jobs.getJSONObject(i).optString("status");
+                if("queued".equals(status)||"running".equals(status)){pending=true;break;}
+            }
+            if(!pending)return;
+            runtime.session.status="Waiting for the current server task, then saving and closing…";
+            if(SystemClock.elapsedRealtime()>=deadline)throw new IOException("The server task is still busy. It has been left running; retry Shut down when the task finishes.");
+            Thread.sleep(500);
+        }
     }
     @Override public void onDestroy(){shutdown.shutdown();if(lock!=null&&lock.isHeld())lock.release();super.onDestroy();}
     @Override public IBinder onBind(Intent intent){return null;}

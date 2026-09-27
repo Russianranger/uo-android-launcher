@@ -1,5 +1,7 @@
 'use strict';
-const $=id=>document.getElementById(id),pending=new Map();let sequence=0,polling=false,currentTab='realm',lastExport='',nativeState={},clientState={};
+const $=id=>document.getElementById(id),pending=new Map();let sequence=0,polling=false,currentTab='realm',nativeState={},clientState={},realmState=null;
+const activeActions=new Set(),seenExports=new Set();
+const readActions=new Set(['read_log','export_logs','controller_open','client_view']);
 function call(operation,args={}){return new Promise((resolve,reject)=>{const id=String(++sequence);pending.set(id,{resolve,reject});if(window.Memento)Memento.call(id,operation,JSON.stringify(args));else{pending.delete(id);reject(new Error('Open this screen inside UO Memento.'));}});}
 window.nativeReply=(id,value)=>{const p=pending.get(id);if(!p)return;pending.delete(id);value.ok?p.resolve(value.result):p.reject(new Error(value.error));};
 function notice(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);}
@@ -14,24 +16,53 @@ try{const v=JSON.parse(localStorage.getItem('launch')||'{}');$('sdl-graphics-fix
 $('gump-space').addEventListener('change',()=>{if($('gump-space').checked)$('resolution').value='1280x720';saveOptions();});
 $('resolution').addEventListener('change',()=>{if($('resolution').value!=='1280x720')$('gump-space').checked=false;saveOptions();});
 for(const id of['renderer','presentation','fps','audio','audio-driver','smooth-audio','client-acceleration','frame-budget','music-cache','sdl-graphics-fixes','render-trace','managed-diagnostics'])$(id).addEventListener('change',saveOptions);
-document.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{currentTab=button.dataset.tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id===currentTab));document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('selected',b===button));if(currentTab==='journal')readLog().catch(e=>notice(e.message,true));}));
+function showTab(tab){currentTab=tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id===tab));document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('selected',b.dataset.tab===tab));}
+document.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{showTab(button.dataset.tab);if(currentTab==='journal')readLog().catch(e=>notice(e.message,true));}));
+function activeJob(){return realmState?.jobs?.find(j=>['queued','running'].includes(j.status));}
+function busy(){return activeActions.size>0||nativeState.session_busy||nativeState.installing||clientState.busy||!!activeJob();}
+function updateControls(){
+    const locked=busy();$('launch-panel').setAttribute('aria-busy',String(!!locked));
+    for(const button of document.querySelectorAll('[data-action]')){
+        const action=button.dataset.action;let disabled=!readActions.has(action)&&locked;
+        if(action==='client_view')disabled=!clientState.display_ready;
+        if(action==='client_stop')disabled=disabled||!clientState.alive;
+        if(action==='server_start')disabled=disabled||realmState?.ready===true;
+        if(['server_save','server_stop'].includes(action))disabled=disabled||!realmState?.running;
+        if(action==='runtime_stop')disabled=disabled||!nativeState.alive;
+        button.disabled=!!disabled;
+    }
+    for(const button of document.querySelectorAll('[data-pick]'))button.disabled=!!locked;
+}
+function showSetupForError(message){
+    if(/Client setup|client runtime|complete Memento client|required \.NET/i.test(message)){showTab('client');$('client-setup').open=true;}
+    else if(/Realm setup|realm runtime first|Mono compiler|compile the server/i.test(message)){showTab('realm');$('realm-setup').open=true;}
+}
+function badge(id,text,ready,starting=false){const node=$(id);node.textContent=text;node.classList.toggle('online',!!ready);node.classList.toggle('starting',!!starting);}
+
 async function exportFile(path){await call('export',{path});notice('File exported.');}
 async function readLog(){const r=await call('logs',{name:$('log-name').value});const selected=$('log-name').value;$('log-name').replaceChildren();for(const name of r.names){const o=document.createElement('option');o.textContent=name;$('log-name').append(o);}if(r.names.includes(selected))$('log-name').value=selected;$('log-text').textContent=r.text||'No log output yet.';}
 async function action(name){
     if(name==='read_log')return readLog();
     if(name==='export_logs'){const result=await call(name);return exportFile(result.file);}
-    const args=name==='pull_compile'?{ref:$('source-ref').value.trim()}:name==='client_start'?options():name==='desktop'?options('desktop'):{};
+    const args=name==='pull_compile'?{ref:$('source-ref').value.trim()}:['session_play','client_start'].includes(name)?options():name==='desktop'?options('desktop'):{};
+    if(name==='session_play'||name==='server_start'){const message=name==='session_play'?'Opening your runtime, server and client…':'Opening runtime and starting server…';notice(message);$('session-status').textContent=message;}
     const result=await call(name==='desktop'?'client_start':name,args);
     if(result&&result.id)notice('Task started. Progress appears in the quest journal.');else notice(result.message||result.status||'Ready.');
     if(name==='client_start'||name==='desktop'){
-        for(let i=0;i<60;i++){await new Promise(r=>setTimeout(r,500));const state=await call('client_native_state');if(state.launch?.error)throw new Error(state.launch.error);if(state.display_ready){await call('client_view');break;}if(!state.alive)throw new Error('Client stopped. Open the Journal for logs.');}
+        let ready=false;for(let i=0;i<360;i++){await new Promise(r=>setTimeout(r,500));const state=await call('client_native_state');if(state.launch?.error)throw new Error(state.launch.error);if(state.display_ready){await call('client_view');ready=true;break;}if(!state.alive)throw new Error('Client stopped. Open the Journal for logs.');}
+        if(!ready)throw new Error('Client is still preparing. Check the Journal, then use Return to client when ready.');
     }
     await refresh();
 }
-document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',async()=>{button.disabled=true;try{await action(button.dataset.action);}catch(e){notice(e.message,true);}finally{button.disabled=false;}}));
+document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',async()=>{
+    const mutates=!readActions.has(button.dataset.action);if(mutates&&busy())return;
+    if(mutates)activeActions.add(button);button.disabled=true;updateControls();
+    try{await action(button.dataset.action);}catch(e){notice(e.message,true);showSetupForError(e.message);}finally{activeActions.delete(button);updateControls();}
+}));
 document.querySelectorAll('[data-pick]').forEach(button=>button.addEventListener('click',async()=>{
-    if(button.dataset.pick==='world'&&!confirm('Restore this world backup? Your current world will be backed up first.'))return;
-    button.disabled=true;try{const r=await call('pick',{kind:button.dataset.pick});notice(r.message||'Import queued. Watch the quest journal.');await refresh();}catch(e){notice(e.message,true);}finally{button.disabled=false;}
+    if(busy())return;
+    if(button.dataset.pick==='world'&&!confirm('Import Info, Saves and Backups from this archive? Your current save data will be backed up first.'))return;
+    activeActions.add(button);updateControls();try{const r=await call('pick',{kind:button.dataset.pick});notice(r.message||'Import queued. Watch the quest journal.');await refresh();}catch(e){notice(e.message,true);showSetupForError(e.message);}finally{activeActions.delete(button);updateControls();}
 }));
 const seenErrors=new Set();
 async function refresh(){
@@ -39,6 +70,9 @@ async function refresh(){
     try{
         [nativeState,clientState]=await Promise.all([call('native_state'),call('client_native_state')]);
         $('runtime-status').textContent=nativeState.status;$('storage').textContent=(nativeState.free_bytes/1073741824).toFixed(1)+' GB free';
+        if(nativeState.version)$('app-version').textContent=nativeState.version;
+        badge('runtime-badge',nativeState.installing?'RUNTIME INSTALLING':nativeState.alive?'RUNTIME READY':'RUNTIME OFF',nativeState.alive,nativeState.installing);
+        badge('client-badge',clientState.display_ready?'CLIENT READY':clientState.alive?'CLIENT STARTING':'CLIENT OFF',clientState.display_ready,clientState.alive&&!clientState.display_ready);
         $('client-status').textContent=clientState.launch?.error||(clientState.alive?(clientState.launch?.phase||clientState.status):clientState.status);
         const frame=clientState.launch?.frame_budget;
         $('frame-budget-status').textContent=frame?(frame.active?'World loading pacing active (last launch).':frame.action==='unchanged_unrecognized_client'?'This client version was left as imported.':'Original world loading behavior (last launch).'):'';
@@ -49,17 +83,22 @@ async function refresh(){
         const graphics=clientState.launch?.sdl_graphics;
         $('sdl-graphics-status').textContent=!graphics?'':graphics.active_version==='3.4.16'?'Last launch: SDL 3.4.16 active.':graphics.action==='restored_original'?'Last launch: original graphics library restored.':graphics.action==='unchanged_unrecognized_libraries'?'Last launch: this client’s graphics libraries were left as imported.':'Last launch: original graphics library active.';
         if(nativeState.alive){
-            const state=await call('state');$('server-badge').textContent=state.running?'ONLINE':'OFFLINE';$('server-badge').classList.toggle('online',state.running);
+            const state=await call('state');realmState=state;badge('server-badge',state.ready?'SERVER ONLINE':state.running?'SERVER STARTING':'SERVER OFFLINE',state.ready,state.running&&!state.ready);
             if(state.build)$('build-info').textContent='Built '+state.build.revision.slice(0,12)+' · '+state.build.ref;
             if(state.client)$('client-info').textContent=state.client.executable+' · '+state.client.architecture+' · '+(state.client.self_contained?'Bundled .NET':'.NET '+state.client.dotnet_version);
             $('tasks').replaceChildren();
             for(const job of state.jobs.slice().reverse()){
                 const row=document.createElement('div');row.className='task '+job.status;row.textContent=job.status.toUpperCase()+' · '+job.message;$('tasks').append(row);
                 if(job.status==='error'&&!seenErrors.has(job.id)){seenErrors.add(job.id);notice(job.error,true);}
-                if(job.result?.file&&job.result.file!==lastExport){lastExport=job.result.file;const button=document.createElement('button');button.textContent='Export '+job.result.file.split('/').pop();button.addEventListener('click',()=>exportFile(job.result.file).catch(e=>notice(e.message,true)));$('exports').prepend(button);}
+                if(job.result?.file&&!seenExports.has(job.result.file)){seenExports.add(job.result.file);const button=document.createElement('button');button.textContent='Export '+job.result.file.split('/').pop();button.addEventListener('click',()=>exportFile(job.result.file).catch(e=>notice(e.message,true)));$('exports').prepend(button);}
             }
             if(!state.jobs.length)$('tasks').textContent='No tasks yet.';
-        }else{$('server-badge').textContent='OFFLINE';$('server-badge').classList.remove('online');}
+        }else{realmState=null;badge('server-badge','SERVER OFFLINE',false);}
+        if(nativeState.session_busy)$('session-status').textContent=nativeState.session_status||'Preparing your session…';
+        else if(activeJob())$('session-status').textContent=activeJob().message;
+        else if(!activeActions.size)$('session-status').textContent=clientState.display_ready?'Client ready · return to your adventure.':realmState?.ready?'Server online · Play opens your client.':!nativeState.installed?'Open Realm setup to install your runtime.':!clientState.installed?'Open Client setup to install your client runtime.':'Ready when you are. Play opens your runtime, server and client.';
+        updateControls();
     }catch(e){notice(e.message,true);}finally{polling=false;}
+
 }
 setInterval(refresh,2000);refresh();

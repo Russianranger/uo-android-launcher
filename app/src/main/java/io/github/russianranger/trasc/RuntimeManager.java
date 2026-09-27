@@ -18,7 +18,8 @@ final class RuntimeManager {
     static synchronized RuntimeManager get(Context c){if(instance==null)instance=new RuntimeManager(c.getApplicationContext());return instance;}
     final Context context;
     final File home,work,rootfs;
-    volatile boolean installing,sessionBusy;
+    volatile boolean installing;
+    final SessionActions session=new SessionActions();
     volatile String status="Prepare your realm to begin.";
     private volatile Process process;
     private String token;
@@ -30,7 +31,7 @@ final class RuntimeManager {
         if(installing)throw new IOException("Finish runtime installation first");
         if(!installed())throw new IOException("Install the realm runtime first");
         File backend=new File(home,"backend");backend.mkdirs();
-        for(String n:new String[]{"engine.py","uo_content.py","MementoAndroidControl.cs","log_retention.py"})try(InputStream in=context.getAssets().open(n)){copy(in,new File(backend,n));}
+        for(String n:new String[]{"engine.py","uo_content.py","world_archives.py","MementoAndroidControl.cs","log_retention.py"})try(InputStream in=context.getAssets().open(n)){copy(in,new File(backend,n));}
         byte[] random=new byte[32];new SecureRandom().nextBytes(random);token=hex(random);
         write(new File(work,"run/api-token"),token);
         File tmp=new File(home,"tmp/server");tmp.mkdirs();
@@ -63,7 +64,7 @@ final class RuntimeManager {
         if(!process.waitFor(30,TimeUnit.SECONDS))throw new IOException("Runtime is still stopping. It has not been force-killed.");
         process=null;status="Realm saved and closed";
     }
-    JSONObject nativeState()throws Exception{return new JSONObject().put("installed",installed()).put("alive",alive()).put("installing",installing).put("status",status).put("free_bytes",home.getUsableSpace()).put("version",BuildConfig.VERSION_NAME);}
+    JSONObject nativeState()throws Exception{return new JSONObject().put("installed",installed()).put("alive",alive()).put("installing",installing).put("status",status).put("session_busy",session.busy).put("session_status",session.status).put("free_bytes",home.getUsableSpace()).put("version",BuildConfig.VERSION_NAME);}
     JSONObject logs(String name)throws Exception{return new JSONObject().put("text",LocalLogs.tail(work,name)).put("names",new JSONArray(LocalLogs.inventory(work).keySet()));}
     JSONObject exportLogs()throws Exception {
         try{AndroidExitDiagnostics.collect(context,work);}

@@ -16,6 +16,7 @@ import uuid
 import zipfile
 from uo_content import (REPOSITORY, confined, extract_zip, inspect_client,
                         install_dotnet, local_client_settings, swap_directory, write_json)
+from world_archives import SAVE_FOLDERS, extract_save_data
 
 
 class Engine:
@@ -39,11 +40,21 @@ class Engine:
     def running(self):
         return self.process is not None and self.process.poll() is None
 
+    def ready(self):
+        if not self.running():
+            return False
+        try:
+            with socket.socket() as probe:
+                probe.settimeout(.15)
+                return probe.connect_ex(('127.0.0.1',2593)) == 0
+        except OSError:
+            return False
+
     def state(self):
         with self.lock:
             build = self.world/'memento-build.json'
             client = self.client/'memento-client.json'
-            return {'running':self.running(), 'compiled':(self.world/'WorldLinux.exe').is_file(),
+            return {'running':self.running(), 'ready':self.ready(), 'compiled':(self.world/'WorldLinux.exe').is_file(),
                     'mono_ready':bool(shutil.which('mcs') and shutil.which('mono')),
                     'build':json.loads(build.read_text()) if build.exists() else None,
                     'client':json.loads(client.read_text()) if client.exists() else None,
@@ -251,45 +262,51 @@ class Engine:
         if not self.world.is_dir():
             raise ValueError('No world is installed')
         target=self.work/'exports'/('memento-world-'+str(time.time_ns())+'.zip')
-        with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=1) as z:
-            z.writestr('memento-backup.json',json.dumps({'format':1,'kind':'world','created':time.time()}))
-            for name in ('Saves','Info','Data','Backups'):
-                root=self.world/name
-                if not root.is_dir(): continue
-                for folder,dirs,files in os.walk(root,followlinks=False):
-                    dirs[:]=[d for d in dirs if not (Path(folder)/d).is_symlink() and not (name=='Data' and d.startswith('Files'))]
-                    for file in files:
-                        p=Path(folder)/file
-                        if not p.is_symlink(): z.write(p,str(p.relative_to(self.world)))
-        return {'message':'World backup ready','file':str(target.relative_to(self.work))}
+        try:
+            with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=1) as z:
+                for name in SAVE_FOLDERS:
+                    root=self.world/name
+                    if root.is_symlink() or (root.exists() and not root.is_dir()):
+                        raise ValueError(name+' must be a real folder before exporting save data')
+                    # Keep empty/missing folders so an unplayed world also round-trips.
+                    z.writestr(name+'/',b'')
+                    if not root.is_dir(): continue
+                    for folder,dirs,files in os.walk(root,followlinks=False):
+                        dirs[:]=[d for d in dirs if not (Path(folder)/d).is_symlink()]
+                        if Path(folder)!=root:
+                            z.write(folder,str(Path(folder).relative_to(self.world))+'/')
+                        for file in files:
+                            p=Path(folder)/file
+                            if not p.is_symlink() and p.is_file(): z.write(p,str(p.relative_to(self.world)))
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+        return {'message':'Info, Saves and Backups export ready','file':str(target.relative_to(self.work))}
 
     def restore_world(self,args):
         self.require_stopped()
         if not self.world.is_dir(): raise ValueError('Compile Memento before restoring a world')
         source=confined(self.work/'incoming',args['file'])
         staging=self.work/'restore-staging'
+        deployment=self.work/'restore-deployment'
         shutil.rmtree(staging,ignore_errors=True)
+        shutil.rmtree(deployment,ignore_errors=True)
         try:
-            extract_zip(source,staging)
-            marker=json.loads((staging/'memento-backup.json').read_text())
-            if marker.get('format')!=1 or marker.get('kind')!='world' or not (staging/'Saves').is_dir():
-                raise ValueError('Choose an exported Memento world backup')
-            if any(p.name not in ('Saves','Info','Data','Backups','memento-backup.json') for p in staging.iterdir()):
-                raise ValueError('Unexpected world backup content')
+            imported=extract_save_data(source,staging)
             backup=self.backup_world({})
             # Swap a complete deployment, so interruption cannot mix old/new save trees.
-            deployment=self.work/'restore-deployment'
-            shutil.rmtree(deployment,ignore_errors=True)
             shutil.copytree(self.world,deployment,symlinks=True)
-            for name in ('Saves','Info','Data','Backups'):
+            for name in SAVE_FOLDERS:
                 if (staging/name).exists():
                     shutil.rmtree(deployment/name,ignore_errors=True)
                     shutil.move(staging/name,deployment/name)
             swap_directory(deployment,self.world)
-            self.link_assets()
-            return {'message':'World restored. Previous world backup: '+backup['file']}
+            message='Save data imported (Info, Saves and Backups only). Previous world backup: '+backup['file']
+            if imported['legacy']: message+=' (Legacy Data content was skipped.)'
+            return {'message':message}
         finally:
             shutil.rmtree(staging,ignore_errors=True)
+            shutil.rmtree(deployment,ignore_errors=True)
             source.unlink(missing_ok=True)
 
 
