@@ -111,7 +111,12 @@ def checkpoint_client_settings(root, metadata):
     write_json(backup, read_json_object(path))
 
 
-def extract_zip(archive, destination, max_bytes=MAX_BYTES):
+def extract_zip(archive, destination, max_bytes=MAX_BYTES, *, member_paths=None):
+    """Validate every member, then extract all or a caller-selected path mapping.
+
+    A mapping can omit members (for example obsolete content in a save backup),
+    but omitted entries still receive the normal archive safety checks.
+    """
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive) as z:
@@ -128,9 +133,20 @@ def extract_zip(archive, destination, max_bytes=MAX_BYTES):
             mode = item.external_attr >> 16
             if stat.S_ISLNK(mode) or (stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR)):
                 raise ValueError('Links and special files are not supported in imports')
-        total = 0
+        selected = []
+        selected_names = set()
         for item in members:
-            path = confined(destination, item.filename)
+            name = item.filename if member_paths is None else member_paths.get(item.filename)
+            if name is None:
+                continue
+            path = confined(destination, name)
+            key = str(path.relative_to(destination.resolve())).casefold()
+            if key in selected_names:
+                raise ValueError('Duplicate or case-conflicting import path: ' + name)
+            selected_names.add(key)
+            selected.append((item, path))
+        total = 0
+        for item, path in selected:
             if item.is_dir():
                 path.mkdir(parents=True, exist_ok=True)
                 continue

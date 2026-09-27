@@ -1,6 +1,17 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.2.8
+## Updating Recovery to 0.2.9
+
+This update limits save-data transfers to **Info, Saves and Backups**, groups client settings in a collapsed **Client options** menu, and adds **Play Memento** to open the realm runtime, start the server, wait for it to be ready, and launch TazUO.
+
+1. Stop the client and save/stop the realm, then install **UO-Memento-0.2.9-Recovery.apk** over Recovery, keeping app data. Existing installations do not need their runtimes or client imported again.
+2. Tap **Play Memento** after setup is complete. **Start server** also opens the installed realm runtime automatically. First-time installation and repair controls are under setup sections.
+3. Open **Client options** to change graphics, resolution, display mode, FPS, audio, performance or diagnostic settings. Your existing values are retained; restart the client to apply changes.
+4. Use **Saves** to export or import save data. New ZIPs contain only `Info/`, `Saves/` and `Backups/`; installed `Data` and server files are not replaced by an import. Save and stop the server before transferring data.
+
+See [release notes](docs/RELEASE-NOTES.md) for the supported archive formats and device checks.
+
+## Previous audio update: 0.2.8
 
 This update targets audio delivery overhead with buffered socket reads and playback-worker priority. It keeps the working 40 ms audio ring and immediate startup behavior, along with the existing Wine/FEX runtime, music cache, world-loading budget, graphics, controls and viewport.
 
@@ -18,19 +29,19 @@ The original preview's signing key was not saved by CI, so 0.1.1 installs separa
 
 Use the [recovery guide](docs/RECOVERY.md) to copy your complete installation with the supplied ADB tool, or export the world from the old Saves tab and set up the recovery app separately. The tool can also export the old logs without using the broken export button.
 
-After migration, retry **Client → Launch TazUO** and export a support ZIP from the Journal. World entry is now verified on the Thor; longer-session stability is still under investigation.
+After migration, retry **Play Memento** and export a support ZIP from the Journal. World entry is now verified on the Thor; longer-session stability is still under investigation.
 
 
 A standalone ARM64 Android launcher for **Ultima Memento + the imported Windows TazUO client**, with a gold UO shield and a retro fantasy interface.
 
 ## First test on the AYN Thor
 
-1. Install the APK. Open **Realm → Install realm runtime**, then **Open runtime → Prepare Mono compiler**. These first downloads require internet.
+1. Install the APK. Open **Realm → Realm setup & updates → Install realm runtime**, then **Open runtime → Prepare Mono compiler**. These first downloads require internet.
 2. Use **Pull & compile** with `main` to fetch `Russianranger/ultima-memento`. You can also enter a tag or commit SHA. The source revision appears after compilation.
-3. In **Client**, import your **complete Windows Memento client folder or ZIP**, including `TazUO.exe` (or `ClassicUO.exe`), its DLL/runtimeconfig, and the Memento asset directory. ZIPs may contain an outer folder. Include exactly one client and one asset directory with `tiledata.mul`, `cliloc.enu`, and `map0.mul`. Your imported settings, client version, credentials and plugins are retained; the server address and asset path are prepared for this app.
+3. In **Client → Client setup & import**, import your **complete Windows Memento client folder or ZIP**, including `TazUO.exe` (or `ClassicUO.exe`), its DLL/runtimeconfig, and the Memento asset directory. ZIPs may contain an outer folder. Include exactly one client and one asset directory with `tiledata.mul`, `cliloc.enu`, and `map0.mul`. Your imported settings, client version, credentials and plugins are retained; the server address and asset path are prepared for this app.
 4. Select **Install FEX runtime**, then **Prepare required .NET**. The app detects the required version and x64/x86 architecture and downloads Microsoft's matching portable runtime with SHA-512 verification. A self-contained client uses its included runtime.
-5. Return to **Realm → Start server**. Wait for **ONLINE**; first-start script compilation can take several minutes. If it fails, read `server.log` in Journal.
-6. Launch TazUO with **Turnip 26 · Vulkan**, **1280×720**, **Native Surface**, **30 FPS**, WASAPI audio and client acceleration enabled. Start with **Test Wine desktop** if client startup fails. The gear menu provides keyboard, Esc, mappings and return to the launcher.
+5. Tap **Start server** at the top. Wait for **ONLINE**; first-start script compilation can take several minutes. If it fails, read `server.log` in Journal.
+6. Tap **Play Memento** with **Turnip 26 · Vulkan**, **1280×720**, **Native Surface**, **30 FPS**, WASAPI audio and client acceleration enabled. Use **Client options → Test Wine desktop** if client startup fails. The gear menu provides keyboard, Esc, mappings and return to the launcher.
 7. Log in, enter the world, move, open inventory, test targeting and audio. LT cycles the four initial layers and displays the active layer at the top. Map your TazUO macros to the chosen keys. Do not enable conflicting native controller bindings in TazUO.
 8. Log out, use **Save & stop**, restart the server and confirm the character and items persist. Create and export a world backup. Use **Journal → Export support logs** to report any issue.
 
@@ -55,7 +66,7 @@ The input engine, relative mouse transport, editable profiles, up to six named l
 
 Everything is app-private, independent of TRASC. Uninstalling deletes it, so export backups first. Server state is saved through a Memento Timer on its main thread, followed by `World.WaitForWriteCompletion()`. A missing save acknowledgement leaves the server running and reports the failure. Source updates back up and preserve `Saves`, `Info`, `Data` and `Backups`, compile in staging, and retain the previous deployment. No changes are pushed to the Memento source repository.
 
-World archives include accounts and characters but exclude game asset files and runtime downloads. Restores stage a complete deployment and back up the current world before activating it. Failed or unsafe client imports leave the existing client intact. Updates preserve existing configuration; changes to upstream settings may need review against your retained `Info` files.
+Save-data archives contain only `Info`, `Saves` and `Backups`, matching the [Memento upgrade procedure](https://github.com/Jascen/ultima-memento/releases/tag/2.4.1). They exclude `Data`, game assets, compiled server files and runtime downloads. Imports preserve the installed server and `Data`, stage the replacement save folders, and back up the current save data before activating it. Failed or unsafe client imports leave the existing client intact. Updates preserve existing configuration; changes to upstream settings may need review against your retained `Info` files.
 
 ## Build
 
