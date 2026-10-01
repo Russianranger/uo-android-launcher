@@ -169,7 +169,7 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
-      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
@@ -186,8 +186,10 @@ jobs:
         with:
           name: presentation-bridge
           path: backend-assets
-      - name: Package updated audio and display with the retained native bridges
-        run: python3 scripts/package-bridges.py
+      - name: Build and package current presentation endpoints
+        run: |
+          bash scripts/build-presentation.sh android
+          python3 scripts/package-bridges.py
       - uses: actions/cache@v4
         id: signing
         if: github.ref == 'refs/heads/main'
@@ -232,6 +234,10 @@ jobs:
           grep -q "package: name='io.github.russianranger.uomemento.recovery'" runtime-work/badging.txt
           grep -q "application-label:'UO Memento Mobile'" runtime-work/badging.txt
           unzip -l app/build/outputs/apk/debug/app-debug.apk > runtime-work/apk-files.txt
+          unzip -p app/build/outputs/apk/debug/app-debug.apk lib/arm64-v8a/libtrasc-presentation.so > runtime-work/packaged-presentation.so
+          "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D --defined-only runtime-work/packaged-presentation.so > runtime-work/presentation-symbols.txt
+          grep -q 'Java_io_github_russianranger_trasc_NativePresentation_capabilities' runtime-work/presentation-symbols.txt
+          grep -q 'Java_io_github_russianranger_trasc_NativePresentation_frame' runtime-work/presentation-symbols.txt
           grep -q assets/Memento.Diagnostics.dll runtime-work/apk-files.txt
           grep -q assets/server_settings.py runtime-work/apk-files.txt
           grep -q assets/backup_catalog.py runtime-work/apk-files.txt
