@@ -1,19 +1,19 @@
-# UO Memento Mobile 0.2.11
+# UO Memento Mobile 0.2.12
 
-The app is now **UO Memento Mobile**, with changed-region delivery for Native Surface. It keeps the existing Recovery application identity and signing certificate, so install this APK over your working app while keeping its data. Log out and save/stop first; no runtime reinstall or client reimport is required.
+This update fixes repeated Native Surface buffer setup. Install it over your working app after logging out and saving/stopping the session, keeping app data. The existing application identity and signing certificate are retained; no runtime reinstall or client reimport is required.
 
-## Changed-frame delivery
+## Surface configuration
 
-- Exact changed bounds include the composited cursor and its old/new positions. Small updates can transfer a region; broad changes, first frames and resizes use full images.
-- The receiver retains the complete image. Packed region rows arrive directly into that image, without a separate patch allocation or merge copy.
-- Color conversion and writes cover Android's returned Surface dirty bounds, including any expansion needed for reused buffers. Surface recreation establishes a fresh full baseline.
-- Existing unchanged-frame skipping, full X11 readback, capture compatibility and 30/60 pacing remain. The existing Wine/FEX runtime, graphics, audio, controller and game viewport settings remain.
-- **Client → Client options → Send changed regions** defaults on. Turn it off and restart the client to compare original full-frame delivery. Older helpers negotiate the original full protocol; the standard display remains available for delivery errors.
+The 0.2.11 Thor session recorded 4,068 Surface posts and 4,068 geometry setup calls. Region delivery saved 34.4% of pixel traffic, but every post still converted/redrew the full image. The receiver compared window query dimensions against game-buffer dimensions; the displayed view and configured image buffers can have different sizes.
 
-## Measurement and checks
+The receiver now uses the existing per-Surface reader cache to remember successful buffer configuration. Setup runs for a fresh reader or an actual game-resolution change. Routine region updates and broad full frames at the same resolution retain their configuration. The retained image is still used to redraw Android's actual returned bounds, including buffer-age expansion, and actual locked-buffer dimensions/format are still validated.
 
-Capture/copy/Surface timings are retained. Sender logs add comparison/cache timing and delivered-byte accounting. Android logs add delivered/redrawn fractions, full/region frame counts, expanded redraws and incoming socket work. The gear view displays transferred/redrawn percentages.
+This pass changes Surface geometry tracking only. Frame pacing, asset preparation, managed client patches, full X11 capture, graphics, audio, controller, backup/settings/session features and tab artwork retain their existing behavior.
 
-Host checks exercise the actual JNI receiver against fragmented packets and buffer-age expansion. Real X11 checks cover both capture modes, both delivery modes, cursor changes, UI damage, broad updates, resize, reconnect and unchanged frames. CI builds/lints Android, checks the new app label/assets, retains the runtime regressions and verifies Recovery certificate continuity before publishing.
+## Verification and device comparison
 
-Device performance is still to be measured. Smaller transfers alone do not establish higher game FPS; full capture and Android buffer preservation can remain the main cost. Use the [device comparison checklist](https://github.com/Russianranger/uo-android-launcher/releases/download/v0.2.11/UO-Memento-Mobile-0.2.11-Instructions.txt) and [counter guide](https://github.com/Russianranger/uo-android-launcher/blob/main/docs/OPTIMIZATION-0.2.11.md). Existing backup management, server settings, session controls and per-tab artwork are retained.
+The native receiver regression now models different view and buffer sizes. It fails on the 0.2.11 receiver and passes with this fix. It checks one initial setup, localized conversion, onscreen view changes, broad frames, actual resolution changes, fresh readers and buffer-age expansion alongside the existing socket and invalid-packet checks. CI rebuilds both native presentation endpoints, packages the current Android receiver, and checks Android build/lint and signing continuity before release.
+
+Leave **Send changed regions** enabled. In support logs, `buffer_reconfigurations` should be zero in steady-state measurement windows after initial setup, with a setup again after a new Surface reader or game-resolution change. Small cursor/gump changes can lower the redrawn fraction; Android may still expand bounds. Walking/broad animation can still redraw the full image. Device stutter/FPS improvements require testing.
+
+Use the [device checklist](https://github.com/Russianranger/uo-android-launcher/releases/download/v0.2.12/UO-Memento-Mobile-0.2.12-Instructions.txt) and [fix/counter details](https://github.com/Russianranger/uo-android-launcher/blob/main/docs/OPTIMIZATION-0.2.12.md).
