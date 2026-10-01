@@ -23,13 +23,14 @@
 static int xerror;
 static int error_handler(Display *d,XErrorEvent *e){(void)d;xerror=e->error_code;return 0;}
 static uint64_t now_ns(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (uint64_t)t.tv_sec*1000000000+t.tv_nsec;}
-struct frame_stats {uint64_t since,frames,capture_ns,send_ns,pace_ns,calls,bytes,requests,captures,idle,duplicates,window_queries,cursor_queries,pointer_queries,query_ns;};
+struct frame_stats {uint64_t since,frames,capture_ns,send_ns,pace_ns,calls,bytes,requests,captures,idle,duplicates,window_queries,cursor_queries,pointer_queries,query_ns,diff_ns,cache_ns,region_requests,region_frames,full_bytes;};
 static void report(struct frame_stats *s,int final){
     uint64_t now=now_ns();if(!s->requests||(!final&&now-s->since<5000000000ull))return;
     double frames=s->frames?(double)s->frames:1,requests=(double)s->requests,captures=s->captures?(double)s->captures:1;
-    fprintf(stderr,"{\"transport\":\"batched-v2\",\"frames\":%llu,\"seconds\":%.3f,\"capture_ms_per_frame\":%.3f,\"send_ms_per_frame\":%.3f,\"pacing_ms_per_request\":%.3f,\"send_calls_per_frame\":%.3f,\"bytes_per_frame\":%.0f,\"requests\":%llu,\"captures\":%llu,\"idle_skips\":%llu,\"duplicate_skips\":%llu,\"window_queries\":%llu,\"cursor_queries\":%llu,\"pointer_queries\":%llu,\"query_ms_per_request\":%.3f}\n",
-        (unsigned long long)s->frames,(now-s->since)/1e9,s->capture_ns/1e6/captures,s->send_ns/1e6/frames,s->pace_ns/1e6/requests,s->calls/frames,s->bytes/frames,
-        (unsigned long long)s->requests,(unsigned long long)s->captures,(unsigned long long)s->idle,(unsigned long long)s->duplicates,(unsigned long long)s->window_queries,(unsigned long long)s->cursor_queries,(unsigned long long)s->pointer_queries,s->query_ns/1e6/requests);fflush(stderr);
+    fprintf(stderr,"{\"transport\":\"%s\",\"frames\":%llu,\"seconds\":%.3f,\"capture_ms_per_frame\":%.3f,\"send_ms_per_frame\":%.3f,\"pacing_ms_per_request\":%.3f,\"send_calls_per_frame\":%.3f,\"bytes_per_frame\":%.0f,\"requests\":%llu,\"captures\":%llu,\"idle_skips\":%llu,\"duplicate_skips\":%llu,\"window_queries\":%llu,\"cursor_queries\":%llu,\"pointer_queries\":%llu,\"query_ms_per_request\":%.3f,\"diff_ms_per_capture\":%.3f,\"cache_ms_per_frame\":%.3f,\"region_frames\":%llu,\"full_frames\":%llu,\"pixel_bytes\":%llu,\"full_frame_bytes\":%llu,\"delivered_pixel_fraction\":%.6f}\n",
+        s->region_requests?"regions-v3":"batched-v2",(unsigned long long)s->frames,(now-s->since)/1e9,s->capture_ns/1e6/captures,s->send_ns/1e6/frames,s->pace_ns/1e6/requests,s->calls/frames,s->bytes/frames,
+        (unsigned long long)s->requests,(unsigned long long)s->captures,(unsigned long long)s->idle,(unsigned long long)s->duplicates,(unsigned long long)s->window_queries,(unsigned long long)s->cursor_queries,(unsigned long long)s->pointer_queries,s->query_ns/1e6/requests,
+        s->diff_ns/1e6/captures,s->cache_ns/1e6/frames,(unsigned long long)s->region_frames,(unsigned long long)(s->frames-s->region_frames),(unsigned long long)s->bytes,(unsigned long long)s->full_bytes,s->full_bytes?(double)s->bytes/s->full_bytes:0);fflush(stderr);
     memset(s,0,sizeof(*s));s->since=now;
 }
 static int unchanged(int fd,uint32_t *header,int shared,struct frame_stats *stats){
@@ -75,10 +76,17 @@ int main(int argc,char **argv){
         XWindowAttributes a={0};XFixesCursorImage *shape=NULL;
         uint64_t last_window_query=0,last_cursor_query=0;
         unsigned char request;
-        while(recv(fd,&request,1,0)==1&&request==1){
+        while(recv(fd,&request,1,0)==1){
+            if(request==TRASC_REQUEST_CAPABILITIES){
+                uint32_t capability=htonl(TRASC_REGIONS_MAGIC);uint64_t calls=0;
+                if(trasc_send_all(fd,&capability,sizeof(capability),&calls))break;
+                continue;
+            }
+            if(request!=TRASC_REQUEST_FULL&&request!=TRASC_REQUEST_REGIONS)break;
+            int regions=request==TRASC_REQUEST_REGIONS;
             uint64_t elapsed=now_ns()-last,interval=1000000000u/(unsigned)fps;
             uint64_t pacing=now_ns();if(last&&elapsed<interval){struct timespec wait={.tv_nsec=(long)(interval-elapsed)};while(nanosleep(&wait,&wait)&&errno==EINTR){}}stats.pace_ns+=now_ns()-pacing;last=now_ns();
-            stats.requests++;
+            stats.requests++;stats.region_requests+=(unsigned)regions;
             uint64_t querying=now_ns();
             Window root,child;int rx=0,ry=0,wx=0,wy=0;unsigned mask=0;
             XQueryPointer(d,DefaultRootWindow(d),&root,&child,&rx,&ry,&wx,&wy,&mask);stats.pointer_queries++;
@@ -142,16 +150,28 @@ int main(int argc,char **argv){
             if(!image||xerror||image->bits_per_pixel!=32||image->byte_order!=LSBFirst||image->red_mask!=0xff0000||image->green_mask!=0xff00||image->blue_mask!=0xff)break;
             cursor(shape,rx,ry,image);if(xerror)break;
             uint64_t captured=now_ns();header[4]=(uint32_t)((captured-capture)/1000);header[7]=(uint32_t)shared;
-            uint32_t wire[8];for(int i=0;i<8;i++)wire[i]=htonl(header[i]);
             stats.capture_ns+=captured-capture;
-            int identical=!resized&&previous&&previous_size==header[6];
-            if(identical)for(uint32_t y=0;y<header[2];y++)if(memcmp(previous+(size_t)y*header[3],image->data+(size_t)y*image->bytes_per_line,header[3])){identical=0;break;}
+            uint32_t frame_bytes=header[6],region[4]={0,0,header[1],header[2]};
+            uint64_t comparing=now_ns();
+            int identical=!resized&&previous&&previous_size==frame_bytes&&
+                !trasc_changed_region(previous,(unsigned char *)image->data,(size_t)image->bytes_per_line,header[1],header[2],regions,region);
+            stats.diff_ns+=now_ns()-comparing;
             if(identical){stats.duplicates++;if(unchanged(fd,header,shared,&stats))break;continue;}
-            if(previous_size!=header[6]){unsigned char *next=realloc(previous,header[6]);if(!next)break;previous=next;previous_size=header[6];}
-            for(uint32_t y=0;y<header[2];y++)memcpy(previous+(size_t)y*header[3],image->data+(size_t)y*image->bytes_per_line,header[3]);
+            uint64_t caching=now_ns();
+            if(previous_size!=frame_bytes){unsigned char *next=realloc(previous,frame_bytes);if(!next)break;previous=next;previous_size=frame_bytes;}
+            for(uint32_t y=region[1];y<region[1]+region[3];y++)
+                memcpy(previous+(size_t)y*header[3]+region[0]*4,image->data+(size_t)y*image->bytes_per_line+region[0]*4,region[2]*4);
+            stats.cache_ns+=now_ns()-caching;
+            int partial=region[2]!=header[1]||region[3]!=header[2];
+            if(partial){header[7]|=TRASC_REGION;header[6]=region[2]*region[3]*4;}
+            uint32_t wire[8],wire_region[4];for(int i=0;i<8;i++)wire[i]=htonl(header[i]);
+            for(int i=0;i<4;i++)wire_region[i]=htonl(region[i]);
             uint64_t sending=now_ns(),calls=0;
-            if(trasc_send_all(fd,wire,sizeof(wire),&calls)||trasc_send_pixels(fd,image->data,header[3],(size_t)image->bytes_per_line,header[2],&packed,&packed_capacity,&calls))break;
-            stats.frames++;stats.send_ns+=now_ns()-sending;stats.calls+=calls;stats.bytes+=header[6];report(&stats,0);
+            if(trasc_send_all(fd,wire,sizeof(wire),&calls)||
+                (partial&&trasc_send_all(fd,wire_region,sizeof(wire_region),&calls))||
+                trasc_send_pixels(fd,image->data+(size_t)region[1]*image->bytes_per_line+region[0]*4,region[2]*4,(size_t)image->bytes_per_line,region[3],&packed,&packed_capacity,&calls))break;
+            stats.frames++;stats.region_frames+=(unsigned)partial;stats.full_bytes+=frame_bytes;
+            stats.send_ns+=now_ns()-sending;stats.calls+=calls;stats.bytes+=header[6];report(&stats,0);
         }
         if(image){if(shared){XShmDetach(d,&shm);XSync(d,False);shmdt(shm.shmaddr);image->data=NULL;}XDestroyImage(image);}
         if(shape)XFree(shape);

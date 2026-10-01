@@ -1,0 +1,19 @@
+UO Memento Mobile 0.2.11 — device checks
+
+Log out, save and stop your current session, then install UO-Memento-Mobile-0.2.11.apk over Recovery. Keep app data. The launcher name changes to UO Memento Mobile; no runtime reinstall or client reimport is needed.
+
+1. Launch and visual checks
+   Use Play Memento with your existing Native Surface, Turnip, 1280x720 and FPS settings. After initial loading, move the cursor over the world and gumps; open/move/close inventory and menus; walk across animated areas. Check for cursor trails, stale rectangles, missing patches, flicker or changed colors. Verify audio and controller input remain normal.
+
+2. Surface recreation
+   Return to the launcher and reopen the client. Switch away from the app and return; lock/unlock once. Confirm the complete view is drawn correctly. Save & close session, then Play again and confirm startup/persistence still work. If you normally use 800x600 or 1024x768, check that resolution on a separate client launch.
+
+3. Compare changed-region delivery
+   In Client → Client options, Send changed regions defaults on. Keep resolution, graphics, FPS and other options fixed. After loading settles, spend about one minute stationary, one minute moving the cursor/opening gumps, and one minute walking. Open the gear view to inspect transferred/redrawn percentages and capture/copy/Surface timing. Export support logs from Journal as the regions-on sample.
+   Log out and save/stop. Turn Send changed regions off, restart the client, and repeat in the same place with the same activity. Export another support archive as the full-frame sample. You can then re-enable the option and relaunch.
+   Reduced transferred bytes alone are not proof of higher game FPS. Capture still reads the full X11 image; Surface may expand redraw bounds. The two samples let us compare diff/transport/copy/Surface costs and actual play behavior.
+
+4. Alternate pacing/display
+   If your normal test was at 30 FPS, check 60 on a separate launch without changing other options. Confirm Standard display still works if you normally use it. Send changed regions affects only Native Surface.
+
+If you see stale pixels or trails, export support logs and note whether it followed cursor movement, gump movement, a resolution change or app resume. Turn Send changed regions off and restart for the full-frame path. Include regions-on/off samples and whether the display fell back to Standard display. Preserve your known-good save export before any unrelated restore test.

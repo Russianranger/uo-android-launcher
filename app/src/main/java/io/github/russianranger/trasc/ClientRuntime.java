@@ -89,6 +89,7 @@ final class ClientRuntime {
             request.put("music_cache",options.optBoolean("music_cache",true));
             request.put("frame_budget",options.optBoolean("frame_budget",true));
             request.put("smooth_audio",options.optBoolean("smooth_audio",true));
+            request.put("dirty_regions",options.optBoolean("dirty_regions",true));
             boolean fexOptions=RUNTIME_ID.equals(options.optString("runtime_backend"));
             request.put("runtime_backend",RUNTIME_ID);
             request.put("managed_diagnostics",fexOptions&&options.optBoolean("managed_diagnostics",false));
