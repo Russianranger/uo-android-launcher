@@ -31,9 +31,9 @@ public final class ServerService extends Service {
             boolean guarded=false;
             try{
                 runtime.session.beginShutdown();guarded=true;
-                try{client.stop();}catch(Exception e){runtime.recordFailure("notification_client_stop",e);}
-                try{waitForRealmTask(runtime);runtime.stop();}catch(Exception e){runtime.status=e.getMessage();runtime.recordFailure("notification_runtime_stop",e);}
+                closeSession(runtime,client);
             }catch(InterruptedException e){Thread.currentThread().interrupt();}
+            catch(Exception e){runtime.session.status=e.getMessage();runtime.status=e.getMessage();runtime.recordFailure("notification_session_close",e);}
             finally{if(guarded)runtime.session.finish();}
             new Handler(Looper.getMainLooper()).post(()->{
                 stopping.set(false);
@@ -42,7 +42,16 @@ public final class ServerService extends Service {
         });
         return START_NOT_STICKY;
     }
-    private void waitForRealmTask(RuntimeManager runtime)throws Exception {
+    static JSONObject closeSession(RuntimeManager runtime,ClientRuntime client)throws Exception {
+        SessionShutdown.run(new SessionShutdown.Host(){
+            public void progress(String message)throws Exception {runtime.session.progress(message);}
+            public void stopClient()throws Exception {client.stop();}
+            public void awaitRealmTask()throws Exception {waitForRealmTask(runtime);}
+            public void closeRuntime()throws Exception {runtime.stop();}
+        });
+        return new JSONObject().put("message",runtime.session.status);
+    }
+    private static void waitForRealmTask(RuntimeManager runtime)throws Exception {
         long deadline=SystemClock.elapsedRealtime()+660000;
         while(runtime.alive()){
             JSONObject response=runtime.request("state",new JSONObject());

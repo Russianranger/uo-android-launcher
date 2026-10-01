@@ -1,6 +1,18 @@
 # UO Memento for Android
 
-## Updating Recovery to 0.2.9
+## Updating Recovery to 0.2.10
+
+This pass adds a persistent backup browser, a touch-friendly server settings editor, complete session controls, and four generated UO-inspired backgrounds that follow the selected tab.
+
+1. Log out, save and stop your existing session, then install **UO-Memento-0.2.10-Recovery.apk** over Recovery, keeping app data. Your working runtime, client, graphics and audio settings are retained.
+2. Use **Save & close session** next to Play to close the client, save the world and close the realm runtime. During Play startup, **Cancel launch & close** requests the same graceful shutdown. The notification uses the same sequence.
+3. In **Saves**, **Save & export** closes the client, saves/stops the server, creates a three-folder ZIP and opens Android's destination picker. The persistent list shows existing app backups, creation times, sizes and completed exports; it is available with the runtime off. You can preview, restore, export or delete an app copy, or explicitly remove older copies while keeping the newest 3, 5 or 10. Nothing is pruned automatically.
+4. **Import & preview a ZIP** displays included folders and file counts before restoration. Confirming a restore saves/closes the current session first and automatically creates a pre-restore backup. Existing app archives remain in the list after restoration. Only `Info`, `Saves` and `Backups` are transferred.
+5. In **Realm → Server settings**, load the installed settings, search or select a category, and edit values. Stop the server before applying. The app validates values and compiles the candidate settings before an atomic replacement. **Discard edits** resets the draft; **Undo last applied edit** restores the exact previous settings file. Local connection values are managed by the launcher; custom expressions and settings defined in a custom override file are preserved and shown read-only.
+
+See [release notes](docs/RELEASE-NOTES.md), [device test instructions](docs/UO-Memento-0.2.10-Instructions.txt) and [artwork prompts](docs/ARTWORK-0.2.10.md).
+
+## Previous update: Recovery 0.2.9
 
 This update limits save-data transfers to **Info, Saves and Backups**, groups client settings in a collapsed **Client options** menu, and adds **Play Memento** to open the realm runtime, start the server, wait for it to be ready, and launch TazUO.
 

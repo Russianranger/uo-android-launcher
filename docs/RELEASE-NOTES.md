@@ -1,31 +1,36 @@
-# UO Memento Recovery 0.2.9
+# UO Memento Recovery 0.2.10
 
-Save-data transfers now include only **Info, Saves and Backups**. A **Play Memento** button handles the normal runtime → server → client startup sequence, and client settings are grouped in a collapsed menu.
+This update adds backup management, a server settings editor and complete session controls, with a distinct UO-inspired pixel-art scene for Realm, Client, Saves and Journal.
 
-## Install and use
+## Backup management
 
-1. Stop the client and save/stop the realm. Install **UO-Memento-0.2.9-Recovery.apk** over UO Memento Recovery, keeping app data. Existing runtimes, imported client, controller mappings and launch settings are retained.
-2. Tap **Play Memento**. The launcher opens the installed realm runtime, checks prerequisites, starts the server if needed, waits for it to accept connections, then launches TazUO and opens its display. Missing prerequisites are reported with the relevant setup section opened.
-3. **Start server** opens the installed realm runtime automatically when you only want the server. Setup/download and maintenance controls remain available in their expandable sections.
-4. Open **Client options** for graphics, resolution, display mode, FPS, audio, loading, controller and diagnostic settings. Restart the client after changing launch settings.
-5. In **Saves**, save and stop the server before creating or importing save data. Export the resulting ZIP outside the app before updating server files or uninstalling.
+- Existing `memento-world-*.zip` archives are listed independently of runtime jobs, including archives created by 0.2.9. The list works with the realm runtime closed.
+- Each app copy shows its creation time, size, purpose when available, and whether an Android export completed. Export completion records that copy operation; the app cannot monitor whether an external file is later moved or deleted.
+- **Save & export** closes the client, waits for the server's save/stop acknowledgement, creates a ZIP and opens the destination picker. Cancelling the picker retains the app backup for a later export.
+- Preview an app archive or an imported ZIP before confirming restoration. Preview shows included folders, file count, compressed/unpacked sizes and legacy compatibility. Extraction validates data again, including ZIP checksums, before activation.
+- Confirming a restore first saves/closes the active session. Current save data is backed up before replacement; restoring an app archive keeps that original archive too.
+- Delete a selected app copy or explicitly retain the newest 3, 5 or 10. No automatic retention policy is enabled. Log archives and exported external copies are outside this deletion scope.
+- New archives still contain **only Info, Saves and Backups**. Installed `Data`, source, binaries, runtimes and game assets are excluded. The previously supported plain, wrapped and legacy save archives remain supported.
 
-## Save-data compatibility
+## Server settings
 
-- New ZIPs contain only the top-level `Info/`, `Saves/` and `Backups/` folders. Empty folders are retained. `Data`, source, compiled server binaries, game assets, runtimes and a separate manifest are excluded.
-- Import accepts these ZIPs, plain save-folder ZIPs (also with one containing folder), and older launcher world archives. Older archives' `Data` contents are ignored.
-- Restore keeps the installed server and `Data` files, including asset links. It backs up the current save data, stages the replacement, and only then activates it. Invalid archives leave the existing world intact.
-- The scope follows the [upstream Memento upgrade procedure](https://github.com/Jascen/ultima-memento/releases/tag/2.4.1), which lists `Info`, `Saves` and optional `Backups`.
+- **Realm → Server settings** reads the installed `Info/Scripts/Settings.cs`. The pinned Memento revision exposes 142 settings in 12 categories, with the existing descriptions, search and category filtering.
+- On/off controls, whole/decimal numbers, text and integer lists are supported. The editor validates types, documented limits, choice lists and paired minimum/maximum settings. Only changed values are written; unrelated settings/comments are retained.
+- Changes require a stopped server and apply on its next start. The candidate file must compile before atomic replacement. A rejected edit leaves the original settings file intact.
+- Discard draft changes or undo the last applied edit. Undo verifies the current revision and restores the previous file, including its original line endings and encoding marker.
+- Address/port/autodetection are managed for the launcher's local connection. Custom expressions and values assigned in `Settings.override.cs` remain read-only, with an explanation; custom code is not evaluated or overwritten.
 
-## Startup behavior
+## Session controls and artwork
 
-- Normal startup is serialized so repeated taps and conflicting setup/import actions cannot start overlapping launch sequences.
-- Progress distinguishes runtime preparation, server startup and client startup. Client launch waits for server readiness, rather than just the existence of a server process.
-- A failed startup reports the failed step; it does not force-kill a world that may need saving. Return to a running client remains available.
-- The existing FEX/Wine runtime, graphics and audio defaults, client patches and viewport behavior are retained. This update does not change their performance tuning.
+- **Save & close session** sits beside Play. It stops the client, waits for active realm tasks, then saves and closes the realm runtime. Failed save acknowledgements leave the realm running with an error to inspect.
+- **Cancel launch & close** remains accessible while normal Play/server startup controls are busy. Cancellation requests a graceful close and waits for backend tasks; it does not force-kill an unfinished server.
+- Launcher and notification shutdown use the same sequence. Duplicate shutdown requests are rejected, and elapsed time accompanies startup/task progress.
+- Four original generated pixel-art backgrounds change with the active tab: castle realm, moongate journey, treasure vault and candlelit journal. Dark panel backgrounds keep text readable. See [artwork provenance and prompts](ARTWORK-0.2.10.md).
 
-## Device checks
+The existing FEX/Wine runtime, audio delivery, client acceleration, graphics defaults, client patches, controller mappings and viewport tuning are retained.
 
-After installation, test **Play Memento** with the realm runtime closed, then with the server already online. Confirm it reaches TazUO without manually opening the runtime. Expand **Client options**, change an option, and reopen the app to check persistence. Restore an exported save-data ZIP with the server stopped and verify your character and settings after restarting. Inspect the exported ZIP to confirm that only `Info`, `Saves` and `Backups` are present.
+## Validation and device checks
 
-Automated archive, launcher sequence and browser checks exercise failure handling and settings persistence. Android build/lint, stable Recovery signing, server compilation and the retained runtime/client checks run in CI. A live Thor session is still required to verify the complete device flow.
+Archive/settings tests cover failure preservation, unsafe input, unchanged server files, persistent catalogs, retention, stale revisions and exact Undo. Java host checks cover ordered startup/shutdown, failure gates, cancellation and duplicate shutdown. Chromium checks exercise phone/landscape layouts, backgrounds, settings edits, backup previews and session controls. CI also compiles edited settings with the real server/game scripts, builds/lints Android, checks packaged assets and verifies Recovery signing against the original certificate.
+
+Use the [device test instructions](UO-Memento-0.2.10-Instructions.txt) after installing the APK. Device validation of these new controls is separate from the working 0.2.9 game session.

@@ -1,0 +1,28 @@
+UO Memento Recovery 0.2.10 — device checks
+
+Install over your working Recovery app. Keep app data; no runtime reinstall or client import is required. Log out and save/stop the old version before installing.
+
+1. Tab backgrounds
+   Visit Realm, Client, Saves and Journal. Confirm the scene changes on every tab and text/buttons remain readable in landscape and portrait.
+
+2. Session controls
+   Tap Play Memento with the realm runtime closed. Confirm the existing server/client startup still works. After logging out, return to the launcher and tap Save & close session. Confirm client, server and runtime badges turn off. Play again to confirm the world and character persist.
+   On a subsequent startup, tap Cancel launch & close while startup is in progress. It may wait for first-start server compilation or a backend task to finish before saving. Confirm it returns to idle and another Play works. Avoid force-stopping while the app reports saving.
+
+3. Backup browser and export
+   Open Saves; existing app backups should appear even with the runtime off. Tap Save & export, choose a destination such as Downloads, and confirm a completed export appears in the list. Inspect the ZIP: only Info, Saves and Backups should be at its root.
+   Restart the launcher or close/reopen the realm runtime. Confirm the list remains available. Cancel an export picker once; its app copy should remain available for a later export.
+   Open Preview / restore and cancel. Confirm the world is untouched. Preview the exported ZIP with Import & preview a ZIP, then cancel once before doing a restoration.
+
+4. Server settings
+   Open Realm → Server settings. Search for ServerSaveMinutes or choose System options. With the server stopped, change it to another allowed value such as 45 and Apply settings. Reload to confirm persistence. Undo last applied edit and reload to confirm the original value returned.
+   Invalid values should be rejected. Applying is disabled while the server is running. Address, port and autodetection remain managed by the launcher. Custom overrides/expressions are preserved and shown read-only.
+
+5. Restore round trip
+   Export a known-good backup first. Make a small reversible in-game change, log out, then restore the known-good archive through Preview / restore or Import & preview a ZIP. Confirming restore saves/closes the current session and creates a Before restore backup.
+   Play again and confirm the archived character/settings returned. Check that the original archive and pre-restore backup remain listed. Installed client/server assets should still work.
+
+6. Optional deletion/retention
+   Create disposable backups and delete one app copy. Exported external copies remain separate. If more than five exist, inspect the confirmation before using Remove older app copies with Keep the newest 5. Nothing is deleted automatically.
+
+If anything fails, export support logs from Journal and report the step, whether server/client were running, and the visible error. A failed save should leave the realm running for recovery.
