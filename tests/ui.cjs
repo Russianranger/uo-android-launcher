@@ -131,6 +131,7 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  if(await page.locator('.backup-card').count()!==2)throw Error('Persistent archive inventory lost or duplicated');
  if(!await page.locator('.backup-card .exported').count()||!await page.locator('.backup-card .not-exported').count())throw Error('Export status missing');
  await page.locator('.backup-card').first().getByRole('button',{name:'Preview / restore'}).click();
+ await page.locator('#restore-preview').waitFor({state:'visible'});
  if(!await page.locator('#restore-preview').isVisible()||!await page.locator('#restore-folders').textContent().then(text=>text.includes('Info, Saves, Backups')))throw Error('Restore preview missing');
  await page.screenshot({path:'ui-reports/restore-phone.png',fullPage:true});
  await page.locator('#cancel-restore').click();
@@ -154,6 +155,7 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  await page.locator('[data-action="settings_reset"]').click();
  await page.locator('[data-tab="saves"]').click();await page.screenshot({path:'ui-reports/saves-phone.png',fullPage:true});
  await page.locator('.backup-card').first().getByRole('button',{name:'Preview / restore'}).click();
+ await page.locator('#restore-preview').waitFor({state:'visible'});
  await page.locator('#confirm-restore').click();await page.waitForFunction(()=>window.calls.some(call=>call.op==='restore_world'));
  if(!await page.evaluate(()=>{const close=window.calls.findIndex(call=>call.op==='session_close'),restore=window.calls.findIndex(call=>call.op==='restore_world');return close>=0&&restore>close;}))throw Error('Restore did not save and close the session first');
  await page.waitForFunction(()=>!document.getElementById('restore-preview').open);
