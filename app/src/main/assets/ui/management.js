@@ -14,7 +14,7 @@ async function awaitTask(job){
         if(!current)throw Error('Task is no longer available. Check the Journal before retrying.');
         if(current.status==='error')throw Error(current.error||current.message);
         if(current.status==='done')return current.result;
-        $('session-status').textContent=current.message;updateControls();
+        $('session-status').textContent=current.message;restoreProgress(current.message);updateControls();
         await new Promise(resolve=>setTimeout(resolve,500));
     }
     throw Error('The task is still running. Check the Journal; it has been left running.');
@@ -23,7 +23,7 @@ async function managedClick(button,work){
     if(busy())return;
     activeActions.add(button);updateControls();
     try{await work();await refresh();}
-    catch(error){notice(error.message,true);showSetupForError(error.message);}
+    catch(error){notice(error.message,true);showSetupForError(error.message);if($('restore-preview').open){$('restore-status').hidden=false;$('restore-status').textContent=error.message;$('restore-status').classList.add('error');}}
     finally{activeActions.delete(button);updateControls();}
 }
 async function loadBackups(){
@@ -52,9 +52,16 @@ async function loadBackups(){
 }
 function showRestorePreview(info){
     pendingRestore=info;
+    $('restore-status').hidden=true;$('restore-status').classList.remove('error');
     $('restore-info').textContent=(info.backup?info.name:'Selected save-data ZIP')+' · '+sizeText(info.bytes)+' · '+info.files+' files · '+sizeText(info.unpacked_bytes)+' unpacked';
     $('restore-folders').textContent='Included: '+info.folders.join(', ')+'.'+(info.legacy?' Legacy Data content will be skipped.':'')+' ZIP contents are validated again during restoration.';
     $('restore-preview').showModal();updateControls();
+}
+function restoreProgress(message){
+    if(!$('restore-preview').open||$('restore-status').classList.contains('error'))return;
+    if(message||nativeState.session_busy||activeJob()){
+        $('restore-status').hidden=false;$('restore-status').textContent=message||nativeState.session_status||activeJob()?.message||'Preparing restoration…';
+    }
 }
 async function cancelRestore(){
     const selected=pendingRestore;pendingRestore=null;$('restore-preview').close();
@@ -65,6 +72,7 @@ $('cancel-restore').addEventListener('click',()=>cancelRestore().catch(e=>notice
 $('restore-preview').addEventListener('cancel',event=>{event.preventDefault();if(!$('cancel-restore').disabled)cancelRestore().catch(e=>notice(e.message,true));});
 $('confirm-restore').addEventListener('click',()=>managedClick($('confirm-restore'),async()=>{
     const selected=pendingRestore;if(!selected)return;
+    $('restore-status').classList.remove('error');$('restore-status').hidden=false;$('restore-status').textContent='Saving the current session before restoring…';
     if(nativeState.alive||clientState.alive)await call('session_close');
     const result=await awaitTask(await call('restore_world',selected.backup?{backup:selected.backup}:{file:selected.file}));
     pendingRestore=null;$('restore-preview').close();notice(result.message);await loadBackups();
@@ -88,6 +96,7 @@ function fieldValue(field,input){
 function settingsChanges(strict=false){
     const changes={};
     for(const [name,{field,input}]of settingInputs){
+        if(input.dataset.touched!=='true')continue;
         try{const value=fieldValue(field,input);input.closest('.setting-field').classList.remove('invalid');if(JSON.stringify(value)!==JSON.stringify(field.value))changes[name]=value;}
         catch(error){input.closest('.setting-field').classList.add('invalid');if(strict)throw error;changes[name]=null;}
         input.closest('.setting-field').classList.toggle('edited',Object.hasOwn(changes,name));
@@ -114,7 +123,7 @@ function renderSettings(model){
             else if(field.type==='bool'){input.type='checkbox';input.checked=field.value;label.className='check';}
             else{input.type=['int','double'].includes(field.type)?'number':'text';input.value=Array.isArray(field.value)?field.value.join(', '):field.value??'';if(input.type==='number'){input.step=field.type==='int'?'1':'any';if(field.min!==undefined)input.min=field.min;if(field.max!==undefined)input.max=field.max;}else input.maxLength=field.type==='string'?2048:10000;}
             if(field.type==='bool')label.append(input);else row.append(input);
-            input.addEventListener('input',()=>updateControls());input.addEventListener('change',()=>updateControls());settingInputs.set(field.name,{field,input});
+            const edited=()=>{input.dataset.touched='true';updateControls();};input.addEventListener('input',edited);input.addEventListener('change',edited);settingInputs.set(field.name,{field,input});
             if(field.min!==undefined){const range=document.createElement('p');range.className='small';range.textContent='Range: '+field.min+' – '+field.max;row.append(range);}
         }
         if(field.description){const help=document.createElement('details');const summary=document.createElement('summary');summary.textContent='What this changes';const text=document.createElement('p');text.textContent=field.description;help.append(summary,text);row.append(help);}
@@ -161,7 +170,7 @@ async function managementAction(name){
         const keep=Number($('backup-keep').value),old=backupInventory.slice(keep),unexported=old.filter(backup=>!backup.exported_at).length;
         if(!old.length)return;
         if(!confirm('Remove '+old.length+' older app backups and keep the newest '+keep+'? '+unexported+' of those older backups have not been exported through the app.'))return;
-        const result=await awaitTask(await call(name,{keep}));notice(result.message);await loadBackups();return;
+        const result=await awaitTask(await call(name,{keep,names:old.map(archive=>archive.name)}));notice(result.message);await loadBackups();return;
     }
     if(name==='save_backup'){
         if((clientState.alive||realmState?.running)&&!confirm('Close the client, save and stop the server, then export your save data?'))return;

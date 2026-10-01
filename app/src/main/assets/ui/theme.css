@@ -22,4 +22,5 @@ nav{background:#19151fed}.panel{background:#241e2aee}#notice{background:#241e28e
 .exported{color:#c9d69b!important}.not-exported{color:#f1c78d!important}
 dialog{color:var(--text);background:#241e2a;border:2px solid var(--edge);padding:24px;width:min(620px,calc(100vw - 28px));max-height:calc(100vh - 32px);overflow:auto;font:inherit}
 dialog::backdrop{background:#08060dcc}dialog p{overflow-wrap:anywhere;font-size:14px}
+#restore-status{padding:12px;border-left:3px solid var(--gold);background:#17131e}#restore-status.error{border-color:#d98374;color:#ffd0ba}
 @media(max-width:650px){.scene-card{min-height:170px;background-position:35% 20%}.scene-card h2{font-size:24px}.setting-grid{grid-template-columns:1fr}.setting-field{padding:12px}.editor-actions button{width:100%;margin-right:0}.session-panel>.actions .danger{flex:1}.backup-card .actions{display:flex;flex-wrap:wrap}.backup-card button{flex:1}dialog{padding:18px}}

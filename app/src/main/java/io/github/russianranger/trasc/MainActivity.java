@@ -123,7 +123,8 @@ public final class MainActivity extends Activity {
             public void awaitServer()throws Exception {MainActivity.this.awaitServer();}
             public void awaitClient()throws Exception {MainActivity.this.awaitClient(options);}
         },withClient);
-        if(withClient)runOnUiThread(()->{if(!isDestroyed())startActivity(new Intent(MainActivity.this,ClientActivity.class));});
+        runtime.session.checkCancelled();
+        if(withClient)runOnUiThread(()->{if(!isDestroyed()&&!runtime.session.closing())startActivity(new Intent(MainActivity.this,ClientActivity.class));});
         return new JSONObject().put("message",runtime.session.status);
     }
     final class Bridge {

@@ -322,6 +322,8 @@ class Engine:
         keep=args.get('keep')
         if type(keep) is not int or not 1<=keep<=1000: raise ValueError('Keep at least one backup')
         old=backup_files(self.work)[keep:]
+        if 'names' in args and args['names']!=[path.name for path in old]:
+            raise ValueError('The backup list changed. Refresh it before removing older copies.')
         for path in old: delete_backup(self.work,path.name)
         return {'message':str(len(old))+' older app backups removed. The newest '+str(keep)+' were kept.'}
 

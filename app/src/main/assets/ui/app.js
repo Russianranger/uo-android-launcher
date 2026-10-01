@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id),pending=new Map();let sequence=0,polling=false,currentTab='realm',nativeState={},clientState={},realmState=null;
-const activeActions=new Set(),seenExports=new Set();
+const activeActions=new Set();
 const readActions=new Set(['read_log','export_logs','controller_open','client_view','load_backups','load_settings','settings_reset']);
 function call(operation,args={}){return new Promise((resolve,reject)=>{const id=String(++sequence);pending.set(id,{resolve,reject});if(window.Memento)Memento.call(id,operation,JSON.stringify(args));else{pending.delete(id);reject(new Error('Open this screen inside UO Memento.'));}});}
 window.nativeReply=(id,value)=>{const p=pending.get(id);if(!p)return;pending.delete(id);value.ok?p.resolve(value.result):p.reject(new Error(value.error));};
@@ -94,15 +94,16 @@ async function refresh(){
             for(const job of state.jobs.slice().reverse()){
                 const row=document.createElement('div');row.className='task '+job.status;row.textContent=job.status.toUpperCase()+' · '+job.message;$('tasks').append(row);
                 if(job.status==='error'&&!seenErrors.has(job.id)){seenErrors.add(job.id);notice(job.error,true);}
-                if(job.result?.file&&!seenExports.has(job.result.file)){seenExports.add(job.result.file);if(currentTab==='saves'&&typeof loadBackups==='function')loadBackups().catch(e=>notice(e.message,true));}
             }
             if(!state.jobs.length)$('tasks').textContent='No tasks yet.';
         }else{realmState=null;badge('server-badge','SERVER OFFLINE',false);}
+        if(currentTab==='saves'&&typeof loadBackups==='function')await loadBackups();
         if(nativeState.session_busy)$('session-status').textContent=nativeState.session_status||'Preparing your session…';
         else if(activeJob())$('session-status').textContent=activeJob().message;
         else if(!activeActions.size)$('session-status').textContent=clientState.display_ready?'Client ready · return to your adventure.':realmState?.ready?'Server online · Play opens your client.':!nativeState.installed?'Open Realm setup to install your runtime.':!clientState.installed?'Open Client setup to install your client runtime.':'Ready when you are. Play opens your runtime, server and client.';
         const seconds=nativeState.session_busy?nativeState.session_seconds:activeJob()?Math.max(0,Math.floor(Date.now()/1000-(activeJob().started_at||Date.now()/1000))):0;
         $('session-elapsed').textContent=seconds?'Elapsed '+Math.floor(seconds/60)+'m '+seconds%60+'s':'';
+        if(typeof restoreProgress==='function')restoreProgress();
         updateControls();
     }catch(e){notice(e.message,true);}finally{polling=false;}
 

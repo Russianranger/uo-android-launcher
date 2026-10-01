@@ -67,6 +67,14 @@ class BackupManagementTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.engine.preview_world({'file': unsafe.name})
         self.assertFalse((self.engine.work / 'restore-staging').exists())
 
+    def test_prune_rejects_an_inventory_that_changed_after_confirmation(self):
+        first=self.backup();second=self.backup()
+        with self.assertRaisesRegex(ValueError,'list changed'):
+            self.engine.prune_backups({'keep':1,'names':[]})
+        self.assertEqual(set(backup_files(self.engine.work)),{first,second})
+        self.engine.prune_backups({'keep':1,'names':[first.name]})
+        self.assertEqual(backup_files(self.engine.work),[second])
+
     def test_save_export_waits_for_successful_save_before_archiving(self):
         events=[]
         with patch.object(self.engine, 'server_stop', side_effect=lambda _:events.append('save')):

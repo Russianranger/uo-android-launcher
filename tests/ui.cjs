@@ -17,12 +17,13 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
    if(op==='session_play'&&window.holdSession){window.nativeReport={session_busy:true,session_cancellable:true,session_seconds:12,session_status:'Starting server · waiting for the world to be ready…'};window.heldSession=id;return;}
    if(op==='session_play'&&window.sessionFailure){setTimeout(()=>window.nativeReply(id,{ok:false,error:window.sessionFailure}),0);return;}
    if(op==='client_start'||op==='session_play')window.clientActive=true;
-   if(op==='native_state')result={alive:true,installed:true,status:'Realm runtime ready',version:'0.2.9',free_bytes:24*1073741824,...window.nativeReport};
+   if(op==='native_state')result={alive:true,installed:true,status:'Realm runtime ready',version:'0.2.10',free_bytes:24*1073741824,...window.nativeReport};
    if(op==='client_native_state')result={alive:!!window.clientActive,display_ready:!!window.clientActive,installed:true,status:'TazUO is ready to launch.',launch:{sdl_graphics:window.graphicsReport}};
    if(op==='state')result={running:false,ready:false,build:{revision:'916d1ec666376ef44366c986befa3200deb93eb0',ref:'main'},client:{executable:'Client/TazUO.exe',architecture:'x64',dotnet_version:'10.0.0'},jobs:[],...window.realmReport};
    if(op==='state')result.jobs=[...result.jobs,...window.mockJobs];
    if(op==='backups')result={entries:window.backupReport,total_bytes:window.backupReport.reduce((sum,entry)=>sum+entry.bytes,0)};
    if(op==='backup_preview')result={name:JSON.parse(args).name,backup:JSON.parse(args).name,folders:['Info','Saves','Backups'],bytes:2000,files:12,unpacked_bytes:4000};
+   if(op==='restore_world'&&window.restoreFailure){setTimeout(()=>window.nativeReply(id,{ok:false,error:window.restoreFailure}),0);return;}
    if(op==='settings_read')result=structuredClone(window.settingsFixture);
    if(['settings_save','settings_undo','save_backup','delete_backup','prune_backups','restore_world'].includes(op)){
     if(op==='settings_save'){window.previousSettings=structuredClone(window.settingsFixture);for(const field of window.settingsFixture.fields)if(Object.hasOwn(JSON.parse(args).changes,field.name))field.value=JSON.parse(args).changes[field.name];window.settingsFixture.revision+='x';window.settingsFixture.can_undo=true;}
@@ -136,12 +137,15 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  await page.screenshot({path:'ui-reports/restore-phone.png',fullPage:true});
  await page.locator('#cancel-restore').click();
  if(await page.evaluate(()=>window.calls.some(call=>call.op==='restore_world')))throw Error('Preview cancellation changed the world');
+ await page.evaluate(()=>{window.settingsFixture.fields.find(field=>field.name==='S_WebsiteName').value=null;window.settingsFixture.fields.find(field=>field.name==='S_WebsiteLink').value='Existing\nmultiline text';});
  await page.locator('[data-tab="realm"]').click();await page.locator('#server-settings > summary').click();
  await page.waitForSelector('#setting-S_ServerSaveMinutes');
+ if(await page.locator('#settings-dirty').textContent()!=='No unsaved changes.')throw Error('Loading settings modified untouched nullable or multiline text');
  await page.locator('#setting-S_ServerSaveMinutes').fill('45');
  await page.waitForFunction(()=>document.getElementById('settings-dirty').textContent.includes('1 unsaved'));
  await page.locator('[data-action="settings_save"]').click();
  await page.waitForFunction(()=>window.calls.some(call=>call.op==='settings_save'&&call.args.changes.S_ServerSaveMinutes===45));
+ if(!await page.evaluate(()=>window.calls.filter(call=>call.op==='settings_save').every(call=>Object.keys(call.args.changes).length===1)))throw Error('Saving edited settings rewrote untouched values');
  await page.waitForFunction(()=>document.getElementById('settings-dirty').textContent==='No unsaved changes.');
  if(!await page.locator('[data-action="settings_undo"]').isEnabled())throw Error('Undo not available after settings save');
  await page.locator('#settings-search').fill('skill');
@@ -156,6 +160,11 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  await page.locator('[data-tab="saves"]').click();await page.screenshot({path:'ui-reports/saves-phone.png',fullPage:true});
  await page.locator('.backup-card').first().getByRole('button',{name:'Preview / restore'}).click();
  await page.locator('#restore-preview').waitFor({state:'visible'});
+ await page.evaluate(()=>window.restoreFailure='Save acknowledgement failed; world was kept.');
+ await page.locator('#confirm-restore').click();
+ await page.waitForFunction(()=>document.getElementById('restore-status').textContent.includes('world was kept')&&!document.getElementById('confirm-restore').disabled);
+ if(!await page.locator('#restore-status').isVisible())throw Error('Restore failure is hidden behind the dialog');
+ await page.evaluate(()=>window.restoreFailure='');
  await page.locator('#confirm-restore').click();await page.waitForFunction(()=>window.calls.some(call=>call.op==='restore_world'));
  if(!await page.evaluate(()=>{const close=window.calls.findIndex(call=>call.op==='session_close'),restore=window.calls.findIndex(call=>call.op==='restore_world');return close>=0&&restore>close;}))throw Error('Restore did not save and close the session first');
  await page.waitForFunction(()=>!document.getElementById('restore-preview').open);
