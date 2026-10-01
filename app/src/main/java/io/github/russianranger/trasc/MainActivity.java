@@ -34,7 +34,7 @@ public final class MainActivity extends Activity {
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
                 Uri uri=request.getUrl();String path=uri.getPath();
                 if(!"https".equals(uri.getScheme())||!"app.memento.local".equals(uri.getHost())||path==null||!path.matches("/[A-Za-z0-9_.-]+"))return blocked();
-                try{String mime=path.endsWith(".js")?"application/javascript":path.endsWith(".css")?"text/css":path.endsWith(".png")?"image/png":"text/html";
+                try{String mime=path.endsWith(".js")?"application/javascript":path.endsWith(".css")?"text/css":path.endsWith(".png")?"image/png":path.endsWith(".webp")?"image/webp":"text/html";
                     WebResourceResponse response=new WebResourceResponse(mime,"UTF-8",getAssets().open("ui"+path));
                     java.util.Map<String,String> headers=new java.util.HashMap<>();headers.put("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'");response.setResponseHeaders(headers);return response;
                 }catch(IOException e){return blocked();}
@@ -123,15 +123,19 @@ public final class MainActivity extends Activity {
             public void awaitServer()throws Exception {MainActivity.this.awaitServer();}
             public void awaitClient()throws Exception {MainActivity.this.awaitClient(options);}
         },withClient);
-        if(withClient)runOnUiThread(()->{if(!isDestroyed())startActivity(new Intent(MainActivity.this,ClientActivity.class));});
+        runtime.session.checkCancelled();
+        if(withClient)runOnUiThread(()->{if(!isDestroyed()&&!runtime.session.closing())startActivity(new Intent(MainActivity.this,ClientActivity.class));});
         return new JSONObject().put("message",runtime.session.status);
     }
     final class Bridge {
         @JavascriptInterface public void call(String id,String operation,String input){submit(()->{
             boolean guarded=false;
             try{JSONObject args=new JSONObject(input);Object result;
-                if(!java.util.Arrays.asList("native_state","client_native_state","state","logs","export_logs","controller_open","client_view","pick","export").contains(operation)){
+                if(java.util.Arrays.asList("session_close","session_cancel").contains(operation)){
+                    runtime.session.beginShutdown();guarded=true;
+                }else if(!java.util.Arrays.asList("native_state","client_native_state","state","logs","export_logs","controller_open","client_view","pick","export","backups","backup_preview","settings_read").contains(operation)){
                     runtime.session.begin("Working · "+operation.replace('_',' '));guarded=true;
+                    runtime.session.cancellable=java.util.Arrays.asList("session_play","server_start").contains(operation);
                 }
                 switch(operation){
                     case "native_state":result=runtime.nativeState();break;
@@ -142,12 +146,20 @@ public final class MainActivity extends Activity {
                     case "client_runtime_online":service();result=client.installOnline();break;
                     case "session_play":service();result=launchSession(true,args);break;
                     case "server_start":service();result=launchSession(false,args);break;
+                    case "session_close":case "session_cancel":service();result=ServerService.closeSession(runtime,client);if(!client.alive()&&!runtime.alive())stopService(new Intent(MainActivity.this,ServerService.class));break;
                     case "client_start":service();result=client.start(args);break;
+                    case "save_backup":service();runtime.start();requireIdle(realm("state",new JSONObject()));client.stop();result=realm("save_backup",args);break;
                     case "client_stop":client.stop();result=client.state();break;
                     case "client_view":if(!client.state().optBoolean("display_ready"))throw new IOException("Wait for the client display and controls to finish preparing");runOnUiThread(()->startActivity(new Intent(MainActivity.this,ClientActivity.class)));result=new JSONObject();break;
                     case "controller_open":runOnUiThread(()->{controller.reload();new ControllerDialog(MainActivity.this,controller,()->{}).show();reply(id,new JSONObject(),null);});return;
                     case "logs":result=runtime.logs(args.optString("name","runtime.log"));break;
                     case "export_logs":result=runtime.exportLogs();break;
+                    case "backups":result=LocalBackups.inventory(runtime.work);break;
+                    case "discard_import":{
+                        String name=args.getString("file");if(!name.matches("[0-9a-f-]{36}\\.zip"))throw new IOException("Invalid pending import");
+                        File file=TarExtractor.path(runtime.work,"incoming/"+name);if(file.isFile()&&!file.delete())throw new IOException("Could not discard the pending import");
+                        result=new JSONObject().put("message","Import cancelled");break;
+                    }
                     case "pick":if(runtime.session.busy)throw new IOException("Finish the current launch or setup task first");runOnUiThread(()->pick(id,args.optString("kind","client")));return;
                     case "export":runOnUiThread(()->export(id,args.optString("path")));return;
                     default:
@@ -155,6 +167,7 @@ public final class MainActivity extends Activity {
                         synchronized(client){
                             if(java.util.Arrays.asList("import_client_zip","prepare_dotnet","pull_compile","restore_world").contains(operation)&&(client.alive()||client.busy))throw new IOException("Stop the client before changing its files or world");
                             if(!"state".equals(operation))runtime.start();
+                            if(java.util.Arrays.asList("save_backup","backup_world","restore_world","settings_save","settings_undo").contains(operation))requireIdle(realm("state",new JSONObject()));
                             JSONObject response=runtime.request(operation,args);if(!response.getBoolean("ok"))throw new IOException(response.optString("error"));result=response.get("result");
                         }
                 }
@@ -201,7 +214,7 @@ public final class MainActivity extends Activity {
         if(code!=RESULT_OK||data==null||data.getData()==null){reply(id,null,new IOException("File selection cancelled"));return;}
         Uri uri=data.getData();service();submit(()->{File temp=null;boolean guarded=false;
             try{
-                if(request==EXPORT){try(InputStream in=new FileInputStream(exportFile(path));OutputStream out=getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new IOException("Cannot write destination");byte[] b=new byte[1024*1024];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}reply(id,new JSONObject().put("message","File exported"),null);return;}
+                if(request==EXPORT){try(InputStream in=new FileInputStream(exportFile(path));OutputStream out=getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new IOException("Cannot write destination");byte[] b=new byte[1024*1024];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}LocalBackups.markExported(runtime.work,path);reply(id,new JSONObject().put("message","File exported"),null);return;}
                 runtime.session.begin("Importing selected files…");guarded=true;
                 synchronized(client){
                     if(client.alive()||client.busy)throw new IOException("Stop the client before importing");
@@ -218,7 +231,7 @@ public final class MainActivity extends Activity {
                     synchronized(client){
                         if(client.alive()||client.busy)throw new IOException("Stop the client before importing");
                         runtime.start();
-                        JSONObject response=runtime.request(kind.equals("world")?"restore_world":"import_client_zip",new JSONObject().put("file",temp.getName()));
+                        JSONObject response=runtime.request(kind.equals("world")?"preview_world":"import_client_zip",new JSONObject().put("file",temp.getName()));
                         if(!response.getBoolean("ok"))throw new IOException(response.optString("error"));reply(id,response.get("result"),null);temp=null;
                     }
                 }

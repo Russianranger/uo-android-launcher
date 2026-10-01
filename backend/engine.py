@@ -10,13 +10,16 @@ import re
 import shutil
 import socket
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
 import zipfile
 from uo_content import (REPOSITORY, confined, extract_zip, inspect_client,
-                        install_dotnet, local_client_settings, swap_directory, write_json)
-from world_archives import SAVE_FOLDERS, extract_save_data
+                        install_dotnet, local_client_settings, swap_directory, sync_directory, write_json)
+from world_archives import SAVE_FOLDERS, extract_save_data, inspect_save_data
+from backup_catalog import backup_file, backup_files, delete_backup
+import server_settings
 
 
 class Engine:
@@ -62,13 +65,14 @@ class Engine:
 
     def submit(self, operation, args):
         allowed = {'prepare_runtime','pull_compile','import_client_zip','prepare_dotnet','server_start',
-                   'server_stop','server_save','backup_world','restore_world'}
+                   'server_stop','server_save','backup_world','restore_world','save_backup',
+                   'delete_backup','prune_backups','settings_save','settings_undo'}
         if operation not in allowed:
             raise ValueError('Unknown operation')
         with self.lock:
             if any(j['status'] in ('queued','running') for j in self.jobs):
                 raise ValueError('Wait for the current task to finish')
-            job = {'id':uuid.uuid4().hex,'operation':operation,'status':'queued','message':'Queued'}
+            job = {'id':uuid.uuid4().hex,'operation':operation,'status':'queued','message':'Queued','started_at':time.time()}
             self.jobs.append(job)
         def run():
             with self.lock:
@@ -134,7 +138,7 @@ class Engine:
                 raise ValueError('This revision has no supported Memento Mono build layout')
             shutil.move(str(export/'World'),staging)
             if self.world.exists():
-                self.backup_world({})
+                self.backup_world({'reason':'Before server update'})
                 # Preserve the entire mutable data/configuration trees across source upgrades.
                 for name in ('Saves','Info','Data','Backups'):
                     old=self.world/name
@@ -257,13 +261,16 @@ class Engine:
     def server_save(self,_):
         return self.world_command('save')
 
-    def backup_world(self,_):
+    def backup_world(self,args):
         self.require_stopped()
         if not self.world.is_dir():
             raise ValueError('No world is installed')
         target=self.work/'exports'/('memento-world-'+str(time.time_ns())+'.zip')
+        fd, name = tempfile.mkstemp(prefix='.creating-', dir=target.parent)
+        os.close(fd)
+        temporary = Path(name)
         try:
-            with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=1) as z:
+            with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED,compresslevel=1) as z:
                 for name in SAVE_FOLDERS:
                     root=self.world/name
                     if root.is_symlink() or (root.exists() and not root.is_dir()):
@@ -278,22 +285,73 @@ class Engine:
                         for file in files:
                             p=Path(folder)/file
                             if not p.is_symlink() and p.is_file(): z.write(p,str(p.relative_to(self.world)))
-        except Exception:
-            target.unlink(missing_ok=True)
-            raise
+            with temporary.open('rb') as source: os.fsync(source.fileno())
+            os.replace(temporary,target)
+            sync_directory(target.parent)
+            write_json(self.work/'backups'/('metadata-'+target.name+'.json'),
+                       {'reason':args.get('reason','Manual backup'),'created_at':time.time()})
+        finally:
+            temporary.unlink(missing_ok=True)
         return {'message':'Info, Saves and Backups export ready','file':str(target.relative_to(self.work))}
+
+    def save_backup(self,_):
+        # A live world cannot be archived while Mono is writing it. The native
+        # session guard keeps client/setup actions out of this save/stop flow.
+        self.server_stop({})
+        result=self.backup_world({'reason':'Save & export'})
+        result['message']='World saved and server stopped. Save-data ZIP is ready to export.'
+        return result
+
+    def backup_preview(self,args):
+        source=backup_file(self.work,args.get('name'))
+        info=inspect_save_data(source,self.work/'restore-staging')
+        info.pop('member_paths')
+        return dict(info,name=source.name,bytes=source.stat().st_size,backup=source.name)
+
+    def preview_world(self,args):
+        source=confined(self.work/'incoming',args['file'])
+        info=inspect_save_data(source,self.work/'restore-staging')
+        info.pop('member_paths')
+        return dict(info,name=source.name,bytes=source.stat().st_size,file=source.name)
+
+    def delete_backup(self,args):
+        delete_backup(self.work,args.get('name'))
+        return {'message':'App backup deleted. Copies exported outside the app are unchanged.'}
+
+    def prune_backups(self,args):
+        keep=args.get('keep')
+        if type(keep) is not int or not 1<=keep<=1000: raise ValueError('Keep at least one backup')
+        old=backup_files(self.work)[keep:]
+        if 'names' in args and args['names']!=[path.name for path in old]:
+            raise ValueError('The backup list changed. Refresh it before removing older copies.')
+        for path in old: delete_backup(self.work,path.name)
+        return {'message':str(len(old))+' older app backups removed. The newest '+str(keep)+' were kept.'}
+
+    def settings_read(self,_):
+        info,_,_=server_settings.read(self.world,self.work/'backups/settings-last-change.json')
+        info['running']=self.running()
+        return info
+
+    def settings_save(self,args):
+        self.require_stopped()
+        return server_settings.save(self.work,self.world,args)
+
+    def settings_undo(self,args):
+        self.require_stopped()
+        return server_settings.undo(self.work,self.world,args)
 
     def restore_world(self,args):
         self.require_stopped()
         if not self.world.is_dir(): raise ValueError('Compile Memento before restoring a world')
-        source=confined(self.work/'incoming',args['file'])
+        existing=bool(args.get('backup'))
+        source=backup_file(self.work,args['backup']) if existing else confined(self.work/'incoming',args['file'])
         staging=self.work/'restore-staging'
         deployment=self.work/'restore-deployment'
         shutil.rmtree(staging,ignore_errors=True)
         shutil.rmtree(deployment,ignore_errors=True)
         try:
             imported=extract_save_data(source,staging)
-            backup=self.backup_world({})
+            backup=self.backup_world({'reason':'Before restore'})
             # Swap a complete deployment, so interruption cannot mix old/new save trees.
             shutil.copytree(self.world,deployment,symlinks=True)
             for name in SAVE_FOLDERS:
@@ -307,7 +365,7 @@ class Engine:
         finally:
             shutil.rmtree(staging,ignore_errors=True)
             shutil.rmtree(deployment,ignore_errors=True)
-            source.unlink(missing_ok=True)
+            if not existing: source.unlink(missing_ok=True)
 
 
 def main():
@@ -324,6 +382,7 @@ def main():
                 if size<1 or size>1024*1024: raise ValueError('Invalid request size')
                 request=json.loads(self.rfile.read(size));op=request['operation'];args=request.get('args',{})
                 if op=='state': result=engine.state()
+                elif op in ('backup_preview','preview_world','settings_read'): result=getattr(engine,op)(args)
                 elif op=='exit':
                     if any(j['status'] in ('queued','running') for j in engine.jobs): raise ValueError('Finish the current task first')
                     engine.server_stop({});result={'message':'Runtime stopped'}

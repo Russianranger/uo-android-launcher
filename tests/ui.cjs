@@ -1,6 +1,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const settingsFixture=JSON.parse(require('child_process').execFileSync('python3',['-c',"import json,sys;from pathlib import Path;sys.path.insert(0,'backend');from server_settings import fields;print(json.dumps({'revision':'first','fields':[f for f,_ in fields(Path('tests/fixtures/memento-settings.cs').read_text())],'can_undo':False,'running':False}))"],{cwd:path.join(__dirname,'..'),encoding:'utf8'}));
 (async()=>{
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:1280,height:850},deviceScaleFactor:1});
@@ -10,18 +11,32 @@ const path = require('path');
   const types={'.html':'text/html','.js':'application/javascript','.css':'text/css','.png':'image/png'};
   await route.fulfill({contentType:types[path.extname(filename)],body:fs.readFileSync(path.join(__dirname,'../app/src/main/assets/ui',filename))});
  });
- await page.addInitScript(()=>{
+ await page.addInitScript((settingsFixture)=>{
+  window.settingsFixture=settingsFixture;window.mockJobs=[];window.backupReport=[{name:'memento-world-2.zip',file:'exports/memento-world-2.zip',bytes:2000,created_at:1790871000,reason:'Before restore'},{name:'memento-world-1.zip',file:'exports/memento-world-1.zip',bytes:1000,created_at:1790870000,reason:'Manual backup',exported_at:1790870100}];
   window.calls=[];window.Memento={call(id,op,args){window.calls.push({op,args:JSON.parse(args)});let result={};
-   if(op==='session_play'&&window.holdSession){window.nativeReport={session_busy:true,session_status:'Starting server · waiting for the world to be ready…'};window.heldSession=id;return;}
+   if(op==='session_play'&&window.holdSession){window.nativeReport={session_busy:true,session_cancellable:true,session_seconds:12,session_status:'Starting server · waiting for the world to be ready…'};window.heldSession=id;return;}
    if(op==='session_play'&&window.sessionFailure){setTimeout(()=>window.nativeReply(id,{ok:false,error:window.sessionFailure}),0);return;}
    if(op==='client_start'||op==='session_play')window.clientActive=true;
-   if(op==='native_state')result={alive:true,installed:true,status:'Realm runtime ready',version:'0.2.9',free_bytes:24*1073741824,...window.nativeReport};
+   if(op==='native_state')result={alive:true,installed:true,status:'Realm runtime ready',version:'0.2.10',free_bytes:24*1073741824,...window.nativeReport};
    if(op==='client_native_state')result={alive:!!window.clientActive,display_ready:!!window.clientActive,installed:true,status:'TazUO is ready to launch.',launch:{sdl_graphics:window.graphicsReport}};
    if(op==='state')result={running:false,ready:false,build:{revision:'916d1ec666376ef44366c986befa3200deb93eb0',ref:'main'},client:{executable:'Client/TazUO.exe',architecture:'x64',dotnet_version:'10.0.0'},jobs:[],...window.realmReport};
+   if(op==='state')result.jobs=[...result.jobs,...window.mockJobs];
+   if(op==='backups')result={entries:window.backupReport,total_bytes:window.backupReport.reduce((sum,entry)=>sum+entry.bytes,0)};
+   if(op==='backup_preview')result={name:JSON.parse(args).name,backup:JSON.parse(args).name,folders:['Info','Saves','Backups'],bytes:2000,files:12,unpacked_bytes:4000};
+   if(op==='restore_world'&&window.restoreFailure){setTimeout(()=>window.nativeReply(id,{ok:false,error:window.restoreFailure}),0);return;}
+   if(op==='settings_read')result=structuredClone(window.settingsFixture);
+   if(['settings_save','settings_undo','save_backup','delete_backup','prune_backups','restore_world'].includes(op)){
+    if(op==='settings_save'){window.previousSettings=structuredClone(window.settingsFixture);for(const field of window.settingsFixture.fields)if(Object.hasOwn(JSON.parse(args).changes,field.name))field.value=JSON.parse(args).changes[field.name];window.settingsFixture.revision+='x';window.settingsFixture.can_undo=true;}
+    if(op==='settings_undo')window.settingsFixture=window.previousSettings;
+    if(op==='delete_backup')window.backupReport=window.backupReport.filter(entry=>entry.name!==JSON.parse(args).name);
+    if(op==='restore_world')window.nativeReport={alive:true,session_busy:false};
+    result={id:'task-'+(window.mockJobs.length+1)};window.mockJobs.push({...result,status:'done',message:'Complete',result:{message:'Complete',file:op==='save_backup'?'exports/memento-world-2.zip':undefined}});
+   }
+   if(op==='session_close'||op==='session_cancel'){window.clientActive=false;window.nativeReport={alive:false,session_busy:false};result={message:'Session saved and closed.'};if(window.heldSession){window.nativeReply(window.heldSession,{ok:false,error:'Launch cancelled. Saving and closing the session…'});window.heldSession=null;window.holdSession=false;}}
    if(op==='logs')result={text:'Memento: ready\n',names:['runtime.log','server.log']};
    setTimeout(()=>window.nativeReply(id,{ok:true,result}),0);
   }};
- });
+ },settingsFixture);
  await page.goto('https://app.memento.local/index.html');await page.waitForTimeout(200);
  fs.mkdirSync('ui-reports',{recursive:true});
  await page.screenshot({path:'ui-reports/realm-landscape.png',fullPage:true});
@@ -83,6 +98,7 @@ const path = require('path');
  await page.setViewportSize({width:412,height:915});await page.screenshot({path:'ui-reports/client-phone.png',fullPage:true});
  for(const tab of ['realm','client','saves','journal']){
   await page.locator(`[data-tab="${tab}"]`).click();
+  if(!await page.evaluate(tab=>document.body.dataset.scene===tab&&getComputedStyle(document.querySelector('#'+tab+' .scene-card')).backgroundImage.includes('background-'+tab+'.png'),tab))throw Error(tab+' background missing');
   if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error(tab+' overflows narrow viewport');
  }
  // A held native Play request owns startup; every competing mutation stays disabled.
@@ -93,6 +109,7 @@ const path = require('path');
  if(!await page.locator('[data-action="session_play"]').isDisabled()||!await page.locator('[data-action="server_start"]').isDisabled())throw Error('Concurrent launch controls remain enabled');
  await page.evaluate(async()=>{await refresh();document.querySelector('[data-action="server_start"]').click();});
  await page.waitForFunction(()=>document.getElementById('session-status').textContent.includes('waiting for the world'));
+ if(!await page.locator('[data-action="session_cancel"]').isEnabled()||!await page.locator('[data-action="session_cancel"]').isVisible())throw Error('Launch cancellation is unavailable while Play owns the session');
  if(await page.evaluate(()=>window.calls.some(c=>c.op==='server_start'||c.op==='client_start')))throw Error('UI dispatched competing native startup');
  if(!await page.evaluate(()=>window.calls.some(c=>c.op==='session_play'&&c.args.runtime_backend==='fex-arm64ec-1'&&c.args.display_fps===60&&c.args.smooth_audio===false)))throw Error('Play did not preserve selected launch options');
  await page.evaluate(()=>{window.holdSession=false;window.nativeReport={session_busy:false};window.nativeReply(window.heldSession,{ok:true,result:{message:'Your world is ready.'}});});
@@ -107,11 +124,56 @@ const path = require('path');
  await page.waitForFunction(async()=>{await refresh();return document.getElementById('server-badge').textContent==='SERVER STARTING';});
  await page.evaluate(()=>{window.realmReport={running:true,ready:true};});
  await page.waitForFunction(async()=>{await refresh();return document.getElementById('server-badge').textContent==='SERVER ONLINE';});
- // Completed archives stay available without multiplying on every status poll.
- await page.evaluate(()=>{window.realmReport={running:false,ready:false,jobs:[{id:'one',status:'done',message:'Saved',result:{file:'exports/one.zip'}},{id:'two',status:'done',message:'Saved',result:{file:'exports/two.zip'}}]};});
- await page.waitForFunction(async()=>{await refresh();return document.querySelectorAll('#exports button').length===2;});
+ // The archive catalog survives an empty job list and a closed runtime.
+ await page.evaluate(()=>{window.realmReport={running:false,ready:false,jobs:[]};window.nativeReport={alive:false,session_busy:false};});
+ await page.locator('[data-tab="saves"]').click();
+ await page.waitForFunction(()=>document.querySelectorAll('.backup-card').length===2);
  await page.evaluate(async()=>{await refresh();await refresh();});
- if(await page.locator('#exports button').count()!==2)throw Error('Duplicate save-data export links');
+ if(await page.locator('.backup-card').count()!==2)throw Error('Persistent archive inventory lost or duplicated');
+ if(!await page.locator('.backup-card .exported').count()||!await page.locator('.backup-card .not-exported').count())throw Error('Export status missing');
+ await page.locator('.backup-card').first().getByRole('button',{name:'Preview / restore'}).click();
+ await page.locator('#restore-preview').waitFor({state:'visible'});
+ if(!await page.locator('#restore-preview').isVisible()||!await page.locator('#restore-folders').textContent().then(text=>text.includes('Info, Saves, Backups')))throw Error('Restore preview missing');
+ await page.screenshot({path:'ui-reports/restore-phone.png',fullPage:true});
+ await page.locator('#cancel-restore').click();
+ if(await page.evaluate(()=>window.calls.some(call=>call.op==='restore_world')))throw Error('Preview cancellation changed the world');
+ await page.evaluate(()=>{window.settingsFixture.fields.find(field=>field.name==='S_WebsiteName').value=null;window.settingsFixture.fields.find(field=>field.name==='S_WebsiteLink').value='Existing\nmultiline text';});
+ await page.locator('[data-tab="realm"]').click();await page.locator('#server-settings > summary').click();
+ await page.waitForSelector('#setting-S_ServerSaveMinutes');
+ if(await page.locator('#settings-dirty').textContent()!=='No unsaved changes.')throw Error('Loading settings modified untouched nullable or multiline text');
+ await page.locator('#setting-S_ServerSaveMinutes').fill('45');
+ await page.waitForFunction(()=>document.getElementById('settings-dirty').textContent.includes('1 unsaved'));
+ await page.locator('[data-action="settings_save"]').click();
+ await page.waitForFunction(()=>window.calls.some(call=>call.op==='settings_save'&&call.args.changes.S_ServerSaveMinutes===45));
+ if(!await page.evaluate(()=>window.calls.filter(call=>call.op==='settings_save').every(call=>Object.keys(call.args.changes).length===1)))throw Error('Saving edited settings rewrote untouched values');
+ await page.waitForFunction(()=>document.getElementById('settings-dirty').textContent==='No unsaved changes.');
+ if(!await page.locator('[data-action="settings_undo"]').isEnabled())throw Error('Undo not available after settings save');
+ await page.locator('#settings-search').fill('skill');
+ if(await page.locator('.setting-field:not([hidden])').count()===0)throw Error('Settings search has no results');
+ if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error('Settings editor overflows phone viewport');
+ await page.screenshot({path:'ui-reports/settings-phone.png',fullPage:true});
+ await page.evaluate(()=>{window.nativeReport={alive:true,session_busy:false};window.realmReport={running:true,ready:true,jobs:[]};});
+ await page.locator('#settings-search').fill('');await page.locator('#setting-S_ServerSaveMinutes').fill('50');
+ await page.waitForFunction(async()=>{await refresh();return document.querySelector('[data-action="settings_save"]').disabled;});
+ if(!await page.locator('[data-action="settings_save"]').isDisabled())throw Error('Settings can be applied while server is running');
+ await page.locator('[data-action="settings_reset"]').click();
+ await page.locator('[data-tab="saves"]').click();await page.screenshot({path:'ui-reports/saves-phone.png',fullPage:true});
+ await page.locator('.backup-card').first().getByRole('button',{name:'Preview / restore'}).click();
+ await page.locator('#restore-preview').waitFor({state:'visible'});
+ await page.evaluate(()=>window.restoreFailure='Save acknowledgement failed; world was kept.');
+ await page.locator('#confirm-restore').click();
+ await page.waitForFunction(()=>document.getElementById('restore-status').textContent.includes('world was kept')&&!document.getElementById('confirm-restore').disabled);
+ if(!await page.locator('#restore-status').isVisible())throw Error('Restore failure is hidden behind the dialog');
+ await page.evaluate(()=>window.restoreFailure='');
+ await page.locator('#confirm-restore').click();await page.waitForFunction(()=>window.calls.some(call=>call.op==='restore_world'));
+ if(!await page.evaluate(()=>{const close=window.calls.findIndex(call=>call.op==='session_close'),restore=window.calls.findIndex(call=>call.op==='restore_world');return close>=0&&restore>close;}))throw Error('Restore did not save and close the session first');
+ await page.waitForFunction(()=>!document.getElementById('restore-preview').open);
+ // Cancel Play uses the dedicated shutdown action while ordinary mutations stay locked.
+ await page.evaluate(()=>{window.holdSession=true;window.nativeReport={alive:true,session_busy:false};window.realmReport={running:false,ready:false,jobs:[]};window.mockJobs=[];});
+ await page.locator('[data-action="session_play"]').click();
+ await page.waitForFunction(async()=>{await refresh();return !document.querySelector('[data-action="session_cancel"]').hidden;});
+ await page.locator('[data-action="session_cancel"]').click();
+ await page.waitForFunction(()=>window.calls.some(call=>call.op==='session_cancel')&&!document.querySelector('[data-action="session_play"]').disabled);
  await page.evaluate(()=>{window.realmReport={running:false,ready:false,jobs:[]};document.getElementById('client-options').open=false;document.getElementById('client-setup').open=false;});
  await page.locator('[data-tab="client"]').click();await page.screenshot({path:'ui-reports/client-phone-collapsed.png',fullPage:true});
  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error('Collapsed client view overflows phone viewport');

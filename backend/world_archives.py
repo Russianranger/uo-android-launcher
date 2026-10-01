@@ -1,9 +1,10 @@
 """Portable Memento player data: Info, Saves and Backups, never server files."""
 import json
 from pathlib import Path
+import stat
 import zipfile
 
-from uo_content import confined, extract_zip
+from uo_content import MAX_BYTES, confined, extract_zip
 
 
 SAVE_FOLDERS = ('Info', 'Saves', 'Backups')
@@ -11,7 +12,7 @@ _FOLDER_NAMES = {name.casefold(): name for name in SAVE_FOLDERS}
 _LEGACY_MARKER = 'memento-backup.json'
 
 
-def extract_save_data(archive, destination):
+def inspect_save_data(archive, destination):
     """Accept a three-folder ZIP, optionally wrapped once, or an old app backup.
 
     Legacy Data entries are checked for unsafe paths but are never extracted.
@@ -20,9 +21,20 @@ def extract_save_data(archive, destination):
     destination = Path(destination)
     with zipfile.ZipFile(archive) as z:
         entries = []
-        for item in z.infolist():
+        members = z.infolist()
+        if len(members) > 250000 or sum(item.file_size for item in members) > MAX_BYTES:
+            raise ValueError('Archive exceeds import limits')
+        seen = set()
+        for item in members:
             path = confined(destination, item.filename)
             parts = path.relative_to(destination.resolve()).parts
+            key = '/'.join(parts).casefold()
+            if key in seen:
+                raise ValueError('Duplicate or case-conflicting archive entry: ' + item.filename)
+            seen.add(key)
+            mode = item.external_attr >> 16
+            if stat.S_ISLNK(mode) or stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR):
+                raise ValueError('Links and special files are not supported in imports')
             if not parts:
                 if item.is_dir():
                     continue
@@ -70,6 +82,14 @@ def extract_save_data(archive, destination):
                 raise ValueError('Only Info, Saves and Backups can be imported; unexpected content: ' + root)
         if 'Saves' not in folder_spellings:
             raise ValueError('Choose a save data ZIP containing a Saves folder')
+        files = [item for item in members if item.filename in selected and not item.is_dir()]
+        return {'legacy': legacy, 'member_paths': selected,
+                'folders': [name for name in SAVE_FOLDERS if name in folder_spellings],
+                'files': len(files), 'unpacked_bytes': sum(item.file_size for item in files)}
 
+
+def extract_save_data(archive, destination):
+    metadata = inspect_save_data(archive, destination)
+    selected = metadata.pop('member_paths')
     extract_zip(archive, destination, member_paths=selected)
-    return {'legacy': legacy}
+    return metadata
