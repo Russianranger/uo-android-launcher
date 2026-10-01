@@ -287,7 +287,7 @@ class Supervisor:
                             # Native Surface already compares captured pixels;
                             # the RFB socket is retained for input and fallback.
                             '-CompareFB','0' if request.get('presentation_mode')=='native_surface' else '2',
-                            '-desktop','UO Memento'],'client-display.log')
+                            '-desktop','UO Memento Mobile'],'client-display.log')
         for _ in range(150):
             if self.stopping():return
             if display.poll() is not None:raise RuntimeError('Embedded display failed. Open client-display.log')

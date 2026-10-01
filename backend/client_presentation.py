@@ -14,7 +14,10 @@ def options(request):
 
 def start(supervisor):
     mode, fps = options(supervisor.request)
-    result = {'presentation_requested': mode, 'presentation_active': 'rfb', 'display_target_fps': fps}
+    regions = supervisor.request.get('dirty_regions', True)
+    if type(regions) is not bool: raise ValueError('Invalid changed-region option')
+    result = {'presentation_requested': mode, 'presentation_active': 'rfb', 'display_target_fps': fps,
+              'dirty_regions_requested': regions}
     if mode == 'rfb': return result
     # A missing/failed prototype does not prevent the game using its current display.
     try:
@@ -23,6 +26,7 @@ def start(supervisor):
         manifest = json.loads((root/'presentation-bundle.json').read_text())
         if manifest.get('format') != 1 or binary.is_symlink() or hashlib.sha256(binary.read_bytes()).hexdigest() != manifest['sha256']:
             raise ValueError('Presentation helper failed verification')
+        result['dirty_regions_supported'] = manifest.get('dirty_regions') == 1
         sock = Path(supervisor.env['XAUTHORITY']).parent/'frames.sock'
         sock.unlink(missing_ok=True)
         process = supervisor.spawn([str(binary), str(sock), str(fps)], 'client-frame-bridge.log')

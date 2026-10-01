@@ -53,9 +53,10 @@ public final class ClientActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         FrameLayout layout=new FrameLayout(this);layout.setBackgroundColor(Color.BLACK);
         display=new ClientView();
-        try{JSONObject state=runtime.state(),launch=state.optJSONObject("launch");nativeActive=launch!=null&&launch.optString("presentation_active").equals("native_surface");if(launch!=null)presentationFallback=launch.optString("presentation_fallback","");}catch(Exception ignored){}
+        boolean regionsRequested=true;
+        try{JSONObject state=runtime.state(),launch=state.optJSONObject("launch");nativeActive=launch!=null&&launch.optString("presentation_active").equals("native_surface");if(launch!=null){presentationFallback=launch.optString("presentation_fallback","");regionsRequested=launch.optBoolean("dirty_regions_requested",true);}}catch(Exception ignored){}
         if(nativeActive){
-            nativeDisplay=new NativePresentation(this,runtime.frameSocket(),new NativePresentation.Events(){
+            nativeDisplay=new NativePresentation(this,runtime.frameSocket(),regionsRequested,new NativePresentation.Events(){
                 public void failed(String reason){fallbackPresentation(reason);}
                 public void size(int width,int height){display.frameWidth=width;display.frameHeight=height;display.input.size(width,height);display.arrangeSurface();}
             });layout.addView(nativeDisplay,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));
@@ -262,7 +263,7 @@ public final class ClientActivity extends Activity {
                     displayRate=sample[2];
                     JSONObject info=new JSONObject().put("created_utc",java.time.Instant.now().toString());
                     info.put("presentation_active",nativeActive?"native_surface":"rfb").put("presentation_fallback",presentationFallback);
-                    if(nativeActive&&nativeDisplay!=null){JSONObject surface=nativeDisplay.sample(now);info.put("native_surface",surface);displayRate=surface.optDouble("surface_posts_per_second");displayCost=String.format(java.util.Locale.ROOT,"\nCapture %.2f ms · copy %.2f ms · Surface wait/post %.2f ms",surface.optDouble("capture_ms_per_frame"),surface.optDouble("native_copy_ms_per_frame"),surface.optDouble("surface_lock_ms_per_frame")+surface.optDouble("surface_post_ms_per_frame"));}
+                    if(nativeActive&&nativeDisplay!=null){JSONObject surface=nativeDisplay.sample(now);info.put("native_surface",surface);displayRate=surface.optDouble("surface_posts_per_second");displayCost=String.format(java.util.Locale.ROOT,"\nCapture %.2f ms · copy %.2f ms · Surface wait/post %.2f ms\nTransferred %.0f%% · redrawn %.0f%% (%s)",surface.optDouble("capture_ms_per_frame"),surface.optDouble("native_copy_ms_per_frame"),surface.optDouble("surface_lock_ms_per_frame")+surface.optDouble("surface_post_ms_per_frame"),surface.optDouble("delivered_pixel_fraction")*100,surface.optDouble("surface_redraw_fraction")*100,surface.optBoolean("dirty_regions_active")?"regions":"full frames");}
                     info.put("view_width",getWidth()).put("view_height",getHeight()).put("controls_open",menuOpen).put("keyboard_open",keyboardOpen).put("window_focused",hasWindowFocus());
                     // Read Android's reported state; no scheduling/power policy changes.
                     PowerManager power=getSystemService(PowerManager.class);

@@ -1,6 +1,16 @@
-# UO Memento for Android
+# UO Memento Mobile
 
-## Updating Recovery to 0.2.10
+## Updating to 0.2.11
+
+The app is now named **UO Memento Mobile**. It updates the existing Recovery installation with the same application identity and certificate; keep app data and your installed runtime/client.
+
+Native Surface can deliver exact changed regions instead of a complete image on every changed frame. It redraws Android's returned Surface bounds from a complete retained image, including buffer-age expansion. Initial connections, resizing and broad changes still deliver full frames. Full X11 readback is retained.
+
+**Client → Client options → Send changed regions** is enabled by default. Turn it off and restart the client for a full-frame comparison. Capture, transport, comparison, copy and Surface counters distinguish smaller transfers from actual device savings; display posts are not game FPS.
+
+Install **UO-Memento-Mobile-0.2.11.apk** over Recovery after logging out and saving/stopping the session. See the [device checks](docs/UO-Memento-Mobile-0.2.11-Instructions.txt), [delivery design and measurement guide](docs/OPTIMIZATION-0.2.11.md) and [release notes](docs/RELEASE-NOTES.md).
+
+## Previous update: Recovery 0.2.10
 
 This pass adds a persistent backup browser, a touch-friendly server settings editor, complete session controls, and four generated UO-inspired backgrounds that follow the selected tab.
 
