@@ -298,5 +298,5 @@ jobs:
           if ! gh release view v0.2.12 >/dev/null 2>&1; then
             gh release create v0.2.12 --target "$GITHUB_SHA" --draft --prerelease --title 'UO Memento Mobile 0.2.12 — Surface configuration fix' --notes-file docs/RELEASE-NOTES.md
           fi
-          gh release upload v0.2.12 dist/UO-Memento-Mobile-0.2.12.apk dist/UO-Memento-Mobile-0.2.12-source.zip dist/UO-Memento-Mobile-0.2.12-Instructions.txt runtime-bridges.zip runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
-          gh release edit v0.2.12 --draft=false
+          gh release upload v0.2.12 dist/UO-Memento-Mobile-0.2.12.apk dist/UO-Memento-Mobile-0.2.12-source.zip dist/UO-Memento-Mobile-0.2.12-Instructions.txt dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
+          gh release edit v0.2.12 --target "$GITHUB_SHA" --draft=false
