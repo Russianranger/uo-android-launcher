@@ -1,6 +1,12 @@
 # UO Memento Mobile
 
-## Updating to 0.2.11
+## Updating to 0.2.12
+
+Native Surface now retains its successful buffer configuration for the current Surface reader. A larger onscreen view no longer causes buffer setup and a forced full redraw on every changed frame. New readers and actual game-resolution changes still configure and redraw a complete baseline; Android's returned redraw bounds remain authoritative.
+
+Install **UO-Memento-Mobile-0.2.12.apk** over your working app after logging out and saving/stopping the session. Keep app data and your installed runtime/client. Leave **Send changed regions** enabled and compare cursor/gump movement, walking and app resume using the [device checks](docs/UO-Memento-Mobile-0.2.12-Instructions.txt) and [fix details](docs/OPTIMIZATION-0.2.12.md).
+
+## Previous update: 0.2.11
 
 The app is now named **UO Memento Mobile**. It updates the existing Recovery installation with the same application identity and certificate; keep app data and your installed runtime/client.
 

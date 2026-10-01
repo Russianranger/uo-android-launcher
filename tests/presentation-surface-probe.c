@@ -8,8 +8,9 @@
 
 /* Exercise the actual JNI receiver against fragmented Unix socket packets and
  * a three-buffer Surface model. Expansion deliberately returns an unpreserved
- * buffer, requiring the receiver's complete retained image. */
-struct ANativeWindow {int width,height,format,current,posted,posts,locks,expand,bad;uint32_t buffers[3][64*48];};
+ * buffer, requiring the receiver's complete retained image. Window queries
+ * describe the onscreen view, independently of the configured image buffers. */
+struct ANativeWindow {int width,height,format,view_width,view_height,geometries,current,posted,posts,locks,expand,bad;uint32_t buffers[3][64*48];};
 static struct ANativeWindow window;
 _Alignas(uint32_t) static unsigned char storage[CACHE_BYTES+sizeof(struct frame_cache)];
 static jlong storage_capacity=sizeof(storage);
@@ -23,10 +24,10 @@ static void output(JNIEnv *env,jlongArray object,jsize start,jsize count,const j
 static const struct JNINativeInterface_ table={.GetDirectBufferAddress=address,.GetDirectBufferCapacity=capacity,.GetArrayLength=length,.SetLongArrayRegion=output};
 static JNIEnv environment=&table;
 ANativeWindow *ANativeWindow_fromSurface(JNIEnv *env,jobject object){(void)env;return (ANativeWindow *)object;}
-int32_t ANativeWindow_getWidth(ANativeWindow *w){return w->width;}
-int32_t ANativeWindow_getHeight(ANativeWindow *w){return w->height;}
+int32_t ANativeWindow_getWidth(ANativeWindow *w){return w->view_width;}
+int32_t ANativeWindow_getHeight(ANativeWindow *w){return w->view_height;}
 int32_t ANativeWindow_getFormat(ANativeWindow *w){return w->format;}
-int32_t ANativeWindow_setBuffersGeometry(ANativeWindow *w,int32_t x,int32_t y,int32_t format){w->width=x;w->height=y;w->format=format;return 0;}
+int32_t ANativeWindow_setBuffersGeometry(ANativeWindow *w,int32_t x,int32_t y,int32_t format){w->geometries++;w->width=x;w->height=y;w->format=format;return 0;}
 int32_t ANativeWindow_lock(ANativeWindow *w,ANativeWindow_Buffer *buffer,ARect *dirty){
     w->locks++;w->current=(w->posted+1)%3;
     check(dirty!=NULL,"Surface dirty bounds supplied");
@@ -63,7 +64,7 @@ static void patch(uint32_t sequence,uint32_t x,uint32_t y,uint32_t width,uint32_
     check(deliver(header,region,pixels,header[6],1)==0,"region delivery");
 }
 static uint32_t pixel(int x,int y){return window.buffers[window.posted][y*64+x];}
-static void baseline(void){memset(storage,0,sizeof(storage));memset(&window,0,sizeof(window));for(int b=0;b<3;b++)for(int i=0;i<64*48;i++)window.buffers[b][i]=0xdeadbeef;full(1,16,12,0x00112233,1);}
+static void baseline(void){memset(storage,0,sizeof(storage));memset(&window,0,sizeof(window));window.view_width=1920;window.view_height=1080;for(int b=0;b<3;b++)for(int i=0;i<64*48;i++)window.buffers[b][i]=0xdeadbeef;full(1,16,12,0x00112233,1);check(window.geometries==1&&timing.values[13]==1,"new Surface reader configures its initial buffer once");}
 static void capability(int legacy){
     int pair[2];check(socketpair(AF_UNIX,SOCK_STREAM,0,pair)==0,"capability socket");pid_t child=fork();check(child>=0,"capability fork");
     if(!child){close(pair[0]);unsigned char request=0;if(read(pair[1],&request,1)!=1||request!=TRASC_REQUEST_CAPABILITIES)_exit(1);
@@ -83,17 +84,21 @@ static void tall_region(void){
 int main(void){
     signal(SIGPIPE,SIG_IGN);capability(0);capability(1);tall_region();baseline();
     check(pixel(15,11)==0xff332211&&pixel(16,11)==0xdeadbeef,"full frame color/stride/padding");
-    patch(2,2,3,4,2,0x00ff0000);check(timing.values[9]==8&&timing.values[10]==192&&timing.values[7]==32,"region timing areas/bytes");
+    patch(2,2,3,4,2,0x00ff0000);
+    check(window.geometries==1&&timing.values[13]==0,"view/buffer size mismatch never repeats geometry setup");
+    check(timing.values[9]==8&&timing.values[10]==192&&timing.values[7]==32,"region timing areas/bytes");
     check(pixel(2,3)==0xff0000ff&&pixel(1,3)==0xff332211&&pixel(16,11)==0xdeadbeef,"localized conversion preserves other pixels");
-    window.expand=1;patch(3,12,8,2,3,0x0000ff00);
-    check(timing.values[9]==192&&timing.values[12]==1,"expanded Surface records actual redraw");
+    window.view_width=720;window.view_height=1280;window.expand=1;patch(3,12,8,2,3,0x0000ff00);
+    check(timing.values[9]==192&&timing.values[12]==1&&timing.values[13]==0&&window.geometries==1,"view resize and buffer-age expansion do not reconfigure image buffers");
     for(int y=0;y<12;y++)for(int x=0;x<16;x++){
         uint32_t expected=(x>=2&&x<6&&y>=3&&y<5)?0xff0000ff:(x>=12&&x<14&&y>=8&&y<11)?0xff00ff00:0xff332211;
         check(pixel(x,y)==expected,"buffer-age expansion redraws complete canonical image");
     }
     uint32_t idle[8]={TRASC_MAGIC,16,12,64,0,4,0,TRASC_UNCHANGED};int posts=window.posts,locks=window.locks;
     check(deliver(idle,NULL,NULL,0,1)==1&&window.posts==posts&&window.locks==locks,"unchanged never locks/posts");
-    full(5,8,6,0x000000ff,1);check(window.width==8&&window.height==6&&pixel(7,5)==0xffff0000&&timing.values[13]==1,"resized full frame");
+    full(5,16,12,0x00112233,1);check(window.geometries==1&&timing.values[13]==0,"broad full frame retains configured geometry");
+    full(6,8,6,0x000000ff,1);check(window.width==8&&window.height==6&&pixel(7,5)==0xffff0000&&timing.values[13]==1&&window.geometries==2,"resolution change configures new image buffers once");
+    full(7,8,6,0x0000ff00,1);check(window.geometries==2&&timing.values[13]==0,"new resolution retains configured geometry on later frames");
     baseline();uint32_t header[8]={TRASC_MAGIC,16,12,64,0,2,4,TRASC_REGION},bounds[4]={2,2,1,1},red=0x00ff0000;posts=window.posts;
     bounds[0]=UINT32_MAX;check(deliver(header,bounds,&red,4,1)==-2&&window.posts==posts,"overflowing rectangle rejected");bounds[0]=2;
     header[6]=8;check(deliver(header,bounds,&red,4,1)==-2,"rectangle byte mismatch rejected");header[6]=4;
@@ -104,9 +109,9 @@ int main(void){
     baseline();check(deliver(header,bounds,NULL,0,1)==-3&&window.posts==1,"truncated payload never posted");
     storage_capacity=CACHE_BYTES;check(deliver(header,bounds,&red,4,1)==-3,"undersized cache rejected");storage_capacity=sizeof(storage);
     baseline();window.bad=1;check(deliver(header,bounds,&red,4,1)==-6,"bad Surface buffer rejected");
-    memset(storage,0,sizeof(storage));window.bad=0;full(77,16,12,0x0000ff00,0);check(pixel(15,11)==0xff00ff00,"fresh legacy stream uses full baseline");
+    memset(storage,0,sizeof(storage));window.bad=0;int geometries=window.geometries;full(77,16,12,0x0000ff00,0);check(pixel(15,11)==0xff00ff00&&window.geometries==geometries+1&&timing.values[13]==1,"fresh reader/legacy stream configures a full baseline even at the same resolution");
     uint32_t invalid[8]={TRASC_MAGIC,1280,768,1280*4,0,1,1280*768*4,0};check(!trasc_frame_valid(invalid),"maximum pixel count enforced");
     invalid[1]=1024;invalid[3]=4096;invalid[6]=1024*768*4;check(trasc_frame_valid(invalid),"supported 1024x768 frame");
     invalid[7]=8;check(!trasc_frame_valid(invalid),"unknown flags rejected");
-    puts("NATIVE_SURFACE_REGIONS_OK fragmented=true cursor_colors=true buffer_age=true resize=true reconnect=true legacy=true invalid_packets=true no_patch_copy=true");return 0;
+    puts("NATIVE_SURFACE_REGIONS_OK fragmented=true cursor_colors=true buffer_age=true view_buffer_mismatch=true geometry_once=true resize=true reconnect=true legacy=true invalid_packets=true no_patch_copy=true");return 0;
 }

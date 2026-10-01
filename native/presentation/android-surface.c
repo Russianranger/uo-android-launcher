@@ -38,7 +38,11 @@ JNIEXPORT jint JNICALL Java_io_github_russianranger_trasc_NativePresentation_fra
     if(trasc_receive_pixels(fd,pixels+(size_t)region[1]*header[3]+region[0]*4,
             region[2]*4,header[3],region[3],&calls))return -3;
     uint64_t received=now_ns();ANativeWindow *window=ANativeWindow_fromSurface(env,surface);if(!window)return -4;
-    int error=0,geometry=ANativeWindow_getWidth(window)!=(int32_t)header[1]||ANativeWindow_getHeight(window)!=(int32_t)header[2]||ANativeWindow_getFormat(window)!=WINDOW_FORMAT_RGBA_8888;
+    /* This cache belongs to one Java Surface reader and is fresh on Surface
+     * recreation. Its dimensions are committed only after a successful post.
+     * Window queries may report the onscreen view size, not our buffer size;
+     * comparing them would repeat setup and force a full redraw every frame. */
+    int error=0,geometry=!baseline||cache->width!=header[1]||cache->height!=header[2];
     if(geometry)error=ANativeWindow_setBuffersGeometry(window,(int32_t)header[1],(int32_t)header[2],WINDOW_FORMAT_RGBA_8888);
     ARect requested={(int32_t)region[0],(int32_t)region[1],(int32_t)(region[0]+region[2]),(int32_t)(region[1]+region[3])},dirty=requested;
     if(geometry)dirty=(ARect){0,0,(int32_t)header[1],(int32_t)header[2]};

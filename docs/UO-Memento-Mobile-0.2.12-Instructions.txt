@@ -1,0 +1,18 @@
+UO Memento Mobile 0.2.12 — Surface configuration checks
+
+Log out, save and stop your session, then install UO-Memento-Mobile-0.2.12.apk over your working app. Keep app data. No runtime reinstall or client reimport is needed.
+
+1. Localized updates
+   Keep Native Surface, Send changed regions enabled, and your existing Turnip, 1280x720 and FPS settings. Let world loading settle. Spend about one minute stationary while moving the cursor and opening/moving/closing inventory and menus. Check for cursor trails, stale rectangles, flicker or incorrect colors. Open the gear view to compare transferred/redrawn percentages and copy/Surface timing.
+
+2. Same walking route
+   Walk the same route as the 0.2.11 test for several minutes, including animated areas. Note whether occasional stutters are reduced, unchanged or worse. Full redraws during broad animation are expected; lower transfer percentages alone do not prove higher game FPS. Confirm audio and controller input remain normal.
+
+3. Surface recreation
+   Return to the launcher and reopen the client. Switch away and return, then lock/unlock once. Check that the complete view returns with no trails or missing patches. Save & close session, then Play again and confirm correct startup and persistence.
+
+4. Resolution change and comparison
+   If you normally use 800x600 or 1024x768, check that resolution on a separate client launch. For a full-frame comparison, log out/save/stop, turn Send changed regions off, and relaunch with every other option fixed. Re-enable it afterward. This update does not change game/capture pacing or asset preparation.
+
+5. Export support logs
+   Export from Journal after the checks. In client-presentation.log, native_surface.buffer_reconfigurations should be zero during ordinary steady-state five-second windows, with setup needed again for a new Surface reader or game-resolution change. It should no longer match the frame count on every window. Small updates can reduce surface_redraw_fraction; Android may still expand redraw bounds. Include your subjective stutter result and whether it followed walking, cursor/menu movement or app resume.
