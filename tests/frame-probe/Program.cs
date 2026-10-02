@@ -56,6 +56,9 @@ var queue = (ConcurrentQueue<byte[]>)network.GetField("_incomingMessages",Fields
 var process = gameType.GetMethod("ProcessNetworkPackets",Fields)!;
 int Length(object buffer) => (int)buffer.GetType().GetProperty("Length")!.GetValue(buffer)!;
 void Frame() => process.Invoke(game,null);
+object TimingState() => typeof(FrameBudget).GetField("state",BindingFlags.Static|BindingFlags.NonPublic)!.GetValue(null)!;
+long Counter(string name) => (long)TimingState().GetType().GetField(name,Fields|BindingFlags.Public)!.GetValue(TimingState())!;
+long StageCalls(int stage) => ((long[])TimingState().GetType().GetField("calls",Fields|BindingFlags.Public)!.GetValue(TimingState())!)[stage];
 byte[] Packet(int n) => new byte[]{0xFE,0,5,(byte)(n>>8),(byte)n};
 Frame(); Frame();
 queue.Enqueue(Enumerable.Range(0,14000).SelectMany(Packet).ToArray());
@@ -66,6 +69,7 @@ while(Observed.Values.Count < 14000 && frames++ < 200) {
 Check(Observed.Values.SequenceEqual(Enumerable.Range(0,14000)),"Dropped/reordered/repeated burst packets");
 Check(Length(stream)==0 && queue.IsEmpty,"Retained bytes were not drained without new socket messages");
 Check(budgeted ? frames>=14 && maxPerFrame<=1000 : frames==1 && maxPerFrame==14000,"Per-packet budget was not applied");
+if(budgeted) Check(Counter("networkPacketCalls")==14000 && Counter("pluginPacketCalls")==0,"Actual packet dispatch timing lost queue attribution");
 if(budgeted) {
     // An indivisible handler can overrun 5ms; the following packet must yield.
     Observed.Values.Clear(); Observed.Delay=true;
@@ -79,12 +83,16 @@ queue.Enqueue(split[2..4]);Frame();Check(Observed.Values.Count==0,"Partial body 
 queue.Enqueue(split[4..].Concat(Packet(16001)).ToArray());Frame();
 Check(Observed.Values.SequenceEqual(new[]{16000,16001}),"Split packet reassembly changed");
 if(budgeted) {
+    long beforePlugins=Counter("pluginPacketCalls");
     Observed.Values.Clear();append(pluginStream,Packet(17000));Frame();
     Check(Observed.Values.SequenceEqual(new[]{17000}),"Plugin packets stranded without socket data");
+    Check(Counter("pluginPacketCalls")==beforePlugins+1,"Plugin dispatch inside network scope misattributed");
     Observed.Values.Clear();Observed.ThrowAt=18000;
+    long beforeFailure=Counter("networkPacketCalls");
     queue.Enqueue(Packet(18000).Concat(Packet(18001)).ToArray());
     try{Frame();throw new Exception("Handler failure was swallowed");}
     catch(TargetInvocationException e) when(e.InnerException is InvalidOperationException){}
+    Check(Counter("networkPacketCalls")==beforeFailure+1,"Failed handler did not finish packet timing");
     Observed.ThrowAt=-1;Thread.Sleep(8);Check(FrameBudget.More(),"Budget remained active after handler exception");
     bool released=Task.Run(()=>{if(!Monitor.TryEnter(stream,1000))return false;Monitor.Exit(stream);return true;}).Result;
     Check(released,"Original parser lock leaked");Frame();
@@ -98,13 +106,47 @@ if(budgeted) {
     Check(Length(stream)==0&&Length(pluginStream)==0,"Old-connection buffers survived reset");
     queue.Enqueue(Packet(20002));Frame();Check(Observed.Values.SequenceEqual(new[]{20002}),"Connection reset replayed stale data");
     var state=typeof(FrameBudget).GetField("state",BindingFlags.Static|BindingFlags.NonPublic)!.GetValue(null)!;
+    // Exercise the real virtual presentation boundary with an interface double.
+    // The original FNA base call must occur once and propagate the same error.
+    var managerField=gameType.BaseType!.GetField("graphicsDeviceManager",Fields)!;
+    var manager=(PresentObserved)DispatchProxy.Create(managerField.FieldType,typeof(PresentObserved));
+    managerField.SetValue(game,manager);
+    var endDraw=gameType.GetMethod("EndDraw",Fields)!;
+    Check(endDraw.GetBaseDefinition().DeclaringType==gameType.BaseType,"EndDraw created a new slot instead of overriding FNA");
+    var presentCall=new DynamicMethod("PresentThroughFna",null,new[]{typeof(object)},typeof(Observed).Module,true);
+    var presentIl=presentCall.GetILGenerator();presentIl.Emit(OpCodes.Ldarg_0);presentIl.Emit(OpCodes.Castclass,gameType.BaseType!);
+    presentIl.Emit(OpCodes.Callvirt,endDraw.GetBaseDefinition());presentIl.Emit(OpCodes.Ret);
+    var present=(Action<object>)presentCall.CreateDelegate(typeof(Action<object>));
+    long beforeEndDraw=StageCalls(FrameBudget.EndDraw);
+    present(game);
+    Check(manager.Calls==1 && StageCalls(FrameBudget.EndDraw)==beforeEndDraw+1,"EndDraw did not delegate once to FNA and record timing");
+    manager.Fail=true;
+    try{present(game);throw new Exception("Presentation failure was swallowed");}
+    catch(InvalidOperationException){}
+    Check(manager.Calls==2 && StageCalls(FrameBudget.EndDraw)==beforeEndDraw+2,"Presentation exception did not complete timing");
+    // Execute the production music wrapper's disabled-audio early return.
+    // Full drawing requires the imported client's complete graphics libraries
+    // and a device; its untouched body and wrapper are checked structurally.
+    var audioType=assembly.GetType("ClassicUO.Game.Managers.AudioManager",true)!;
+    var audio=RuntimeHelpers.GetUninitializedObject(audioType);
+    long beforeMusic=StageCalls(FrameBudget.Music);
+    audioType.GetMethod("PlayMusic")!.Invoke(audio,new object[]{0,false,false,false});
+    Check(StageCalls(FrameBudget.Music)==beforeMusic+1,"Music early return did not finish timing");
     state.GetType().GetField("nextReport",Fields|BindingFlags.Public)!.SetValue(state,1L);
     long timing=FrameBudget.Begin(FrameBudget.Update);FrameBudget.End(FrameBudget.Update,timing);
 }
-Console.WriteLine($"FRAME_BUDGET_OK actual_assembly=true mode={args[1]} frames={frames} max_packets_per_frame={maxPerFrame} ordered=true split_packets=true retained_bytes=true exception_cleanup={budgeted} plugins={budgeted}");
+Console.WriteLine($"FRAME_BUDGET_OK actual_assembly=true mode={args[1]} frames={frames} max_packets_per_frame={maxPerFrame} ordered=true split_packets=true retained_bytes=true exception_cleanup={budgeted} plugins={budgeted} load_boundaries={budgeted}");
 
 public static class Observed {
     public static readonly List<int> Values = new();
     public static bool Delay; public static int ThrowAt=-1;
     public static void Record(int value) { Values.Add(value);if(Delay)Thread.Sleep(8);if(value==ThrowAt)throw new InvalidOperationException("fixture handler"); }
+}
+
+public class PresentObserved : DispatchProxy {
+    public int Calls; public bool Fail;
+    protected override object Invoke(MethodInfo method,object[] args) {
+        if(method!.Name!="EndDraw")throw new Exception("Unexpected presentation operation");
+        Calls++;if(Fail)throw new InvalidOperationException("fixture presentation");return null;
+    }
 }

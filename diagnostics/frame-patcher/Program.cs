@@ -9,6 +9,7 @@ if (hash != "b04066be1b1b475ca00e6982a980e2dd11b93abede00c79c68bde566bdcf947e" &
     throw new InvalidOperationException("Unrecognized client binary");
 var resolver = new DefaultAssemblyResolver();
 resolver.AddSearchDirectory(Path.GetDirectoryName(Path.GetFullPath(args[0])));
+resolver.AddSearchDirectory(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(args[0]))!, "original"));
 resolver.AddSearchDirectory(Path.GetDirectoryName(typeof(object).Assembly.Location));
 var constants = new ConstantMetadataResolver(resolver);
 using var client = ModuleDefinition.ReadModule(args[0], new ReaderParameters { AssemblyResolver = resolver, MetadataResolver = constants });
@@ -56,6 +57,37 @@ void Time(MethodDefinition method, int stage, bool isNetwork = false) {
     il.Append(cleanup); if (!isNetwork) il.Append(il.Create(OpCodes.Ldloc, began));
     il.Append(il.Create(OpCodes.Call, Import(isNetwork ? "EndNetwork" : "End"))); il.Append(il.Create(OpCodes.Endfinally)); il.Append(done);
     body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Finally) { TryStart = first, TryEnd = cleanup, HandlerStart = cleanup, HandlerEnd = done });
+}
+
+// Keep AnalyzePacket and its handler invocation intact. The wrapper receives
+// the parser's actual network/plugin flag, rather than inferring it from an
+// outer network-processing scope. No packet payload leaves this boundary.
+var analyze = parser.Methods.Single(m => m.Name == "AnalyzePacket");
+if (analyze.IsStatic || analyze.ReturnType.FullName != "System.Void" || analyze.Parameters.Count != 3 ||
+    analyze.Parameters[1].ParameterType.FullName != "System.ReadOnlySpan`1<System.Byte>")
+    throw new Exception("Unexpected packet dispatch signature");
+var dispatch = new MethodDefinition("MementoAnalyzePacket", MethodAttributes.Private | MethodAttributes.HideBySig, client.TypeSystem.Void);
+foreach (var parameter in analyze.Parameters) dispatch.Parameters.Add(new ParameterDefinition(parameter.ParameterType));
+dispatch.Parameters.Add(new ParameterDefinition(client.TypeSystem.Boolean));
+parser.Methods.Add(dispatch); dispatch.Body.InitLocals = true;
+var scope = new VariableDefinition(client.ImportReference(budget.Methods.Single(m => m.Name == "BeginPacket").ReturnType));
+dispatch.Body.Variables.Add(scope);
+var dil = dispatch.Body.GetILProcessor();
+dil.Append(dil.Create(OpCodes.Ldarg_2)); dil.Append(dil.Create(OpCodes.Ldarg, dispatch.Parameters[3]));
+dil.Append(dil.Create(OpCodes.Call, Import("BeginPacket"))); dil.Append(dil.Create(OpCodes.Stloc, scope));
+var dispatchStart = dil.Create(OpCodes.Ldarg_0); var dispatchDone = dil.Create(OpCodes.Ret);
+dil.Append(dispatchStart); dil.Append(dil.Create(OpCodes.Ldarg_1)); dil.Append(dil.Create(OpCodes.Ldarg_2)); dil.Append(dil.Create(OpCodes.Ldarg_3));
+dil.Append(dil.Create(OpCodes.Call, analyze)); dil.Append(dil.Create(OpCodes.Leave, dispatchDone));
+var dispatchFinally = dil.Create(OpCodes.Ldloc, scope); dil.Append(dispatchFinally);
+dil.Append(dil.Create(OpCodes.Call, Import("EndPacket"))); dil.Append(dil.Create(OpCodes.Endfinally)); dil.Append(dispatchDone);
+dispatch.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Finally) {
+    TryStart = dispatchStart, TryEnd = dispatchFinally, HandlerStart = dispatchFinally, HandlerEnd = dispatchDone
+});
+var analyzeCalls = parse.Body.Instructions.Where(i => i.Operand is MethodReference m && m.FullName == analyze.FullName).ToArray();
+if (analyzeCalls.Length != 1) throw new Exception("Unexpected packet dispatch call count");
+foreach (var call in analyzeCalls) {
+    parse.Body.GetILProcessor().InsertBefore(call, Instruction.Create(OpCodes.Ldarg_3));
+    call.Operand = dispatch;
 }
 // Keep packet decoding, handlers, logging, locking and partial packet behavior
 // exactly as imported. Only guard the start of a complete parsing iteration.
@@ -109,6 +141,26 @@ Time(scene.Methods.Single(m => m.Name == "Update"), 2);
 Time(scene.Methods.Single(m => m.Name == "Load"), 3);
 Time(client.GetType("ClassicUO.Game.Managers.AudioManager").Methods.Single(m => m.Name == "Update"), 4);
 Time(scene.Methods.Single(m => m.Name == "FillGameObjectList"), 5);
+// Cold asset creation and upload can occur after Update; time the original
+// draw and presentation boundaries independently without issuing GPU calls.
+Time(controller.Methods.Single(m => m.Name == "Draw"), 6);
+// EndDraw is inherited from FNA, outside GameController.Draw. A normal virtual
+// override delegates to that exact base implementation and only times it.
+var baseEndDraw = controller.BaseType.Resolve().Methods.Single(m => m.Name == "EndDraw" && m.Parameters.Count == 0);
+if (Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(baseEndDraw.Module.FileName))).ToLowerInvariant() !=
+    "399c91458ccbd08bcd8094bde39a1091f5edd545fd77a9b4579016e7ac5498c6")
+    throw new Exception("Unrecognized presentation dependency");
+if (baseEndDraw.ReturnType.FullName != "System.Void" || !baseEndDraw.IsVirtual || controller.Methods.Any(m => m.Name == "EndDraw"))
+    throw new Exception("Unexpected presentation boundary");
+var endDraw = new MethodDefinition("EndDraw", MethodAttributes.Family | MethodAttributes.Virtual | MethodAttributes.HideBySig, client.TypeSystem.Void);
+controller.Methods.Add(endDraw);
+var eil = endDraw.Body.GetILProcessor();
+// Reuse the client's existing FNA/core-library references. Importing FNA's
+// definition would also add its older System.Runtime version unnecessarily.
+var endDrawCall = new MethodReference(baseEndDraw.Name, client.TypeSystem.Void, controller.BaseType) { HasThis = true };
+eil.Append(eil.Create(OpCodes.Ldarg_0)); eil.Append(eil.Create(OpCodes.Call, endDrawCall)); eil.Append(eil.Create(OpCodes.Ret));
+Time(endDraw, 7);
+Time(client.GetType("ClassicUO.Game.Managers.AudioManager").Methods.Single(m => m.Name == "PlayMusic"), 8);
 // Retained bytes must belong to one connection. Backport the prerequisite
 // parser reset from upstream ce59683 as each login/relay socket is replaced.
 var clear = new MethodDefinition("MementoClearBuffers", MethodAttributes.Assembly | MethodAttributes.HideBySig, client.TypeSystem.Void);

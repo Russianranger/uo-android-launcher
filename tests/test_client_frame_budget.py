@@ -17,7 +17,7 @@ class FramePatchTests(unittest.TestCase):
         self.root=Path(self.tmp.name)/'client';self.root.mkdir()
         self.assets=Path(self.tmp.name)/'assets';self.assets.mkdir()
         self.states={(False,False):b'original',(False,True):b'render',(True,False):b'budget',(True,True):b'combined'}
-        for module,key,data in [(trace,'ORIGINAL',b'original'),(trace,'INSTRUMENTED',b'render'),(trace,'FNA',b'fna'),(frame,'BUDGET',b'budget'),(frame,'COMBINED',b'combined')]:
+        for module,key,data in [(trace,'ORIGINAL',b'original'),(trace,'INSTRUMENTED',b'render'),(trace,'FNA',b'fna'),(frame,'BUDGET',b'budget'),(frame,'COMBINED',b'combined'),(frame,'LEGACY_BUDGET',b'legacy budget'),(frame,'LEGACY_COMBINED',b'legacy combined')]:
             p=patch.object(module,key,hashlib.sha256(data).hexdigest());p.start();self.addCleanup(p.stop)
         for name,data in [(trace.PATCH,b'render'),(frame.PATCH,b'budget'),(frame.COMBINED_PATCH,b'combined')]:
             (self.assets/name).write_bytes(base64.b64encode(delta(data)))
@@ -40,6 +40,61 @@ class FramePatchTests(unittest.TestCase):
         self.assertTrue(self.prepare(True,True)['frame_budget']['active'])
         self.prepare(False,True);self.assertEqual((self.root/'TazUO.dll').read_bytes(),b'render')
         self.prepare(False,False);self.assertEqual((self.root/'TazUO.dll').read_bytes(),b'original')
+    def legacy(self,combined):
+        data=b'legacy combined' if combined else b'legacy budget'
+        (self.root/'TazUO.dll').write_bytes(data)
+        (self.root/frame.BACKUP).write_bytes(b'original')
+        if combined:(self.root/trace.BACKUP).write_bytes(b'original')
+        return data
+    def test_upgrade_both_legacy_variants_and_restore_each_option(self):
+        for combined in (False,True):
+            for choice,data in self.states.items():
+                with self.subTest(legacy_combined=combined,choice=choice):
+                    legacy=self.legacy(combined)
+                    result=self.prepare(*choice)
+                    self.assertEqual((self.root/'TazUO.dll').read_bytes(),data)
+                    self.assertEqual(result['frame_budget']['before_sha256'],hashlib.sha256(legacy).hexdigest())
+                    self.assertEqual(result['frame_budget']['revision'],2)
+                    self.assertEqual(result['frame_budget']['active'],choice[0])
+                    self.assertEqual(result['render_trace']['active'],choice[1])
+                    self.assertEqual(result['frame_budget']['action'],'restored_original' if choice==(False,False) else 'updated_known_client')
+                    self.assertEqual((self.root/frame.BACKUP).read_bytes(),b'original')
+                    with patch.object(trace,'atomic_write',side_effect=AssertionError('Unnecessary rewrite')):self.prepare(*choice)
+                    self.prepare(False,False)
+                    self.assertEqual((self.root/'TazUO.dll').read_bytes(),b'original')
+    def test_legacy_missing_corrupt_and_symlink_backups_preserve_client(self):
+        for combined in (False,True):
+            names=[frame.BACKUP,trace.BACKUP] if combined else [frame.BACKUP]
+            for name in names:
+                for invalid in ('missing','corrupt','symlink'):
+                    for choice in ((True,combined),(False,False),(False,True)):
+                        with self.subTest(legacy_combined=combined,backup=name,invalid=invalid,choice=choice):
+                            # Restore both backups before the next attempted migration.
+                            for candidate in (frame.BACKUP,trace.BACKUP):
+                                p=self.root/candidate
+                                if p.is_symlink():p.unlink()
+                            legacy=self.legacy(combined);backup=self.root/name
+                            backup.unlink()
+                            if invalid=='corrupt':backup.write_bytes(b'changed')
+                            elif invalid=='symlink':backup.symlink_to(self.root/'TazUO.dll')
+                            with self.assertRaisesRegex(ValueError,'backup is missing or changed'):self.prepare(*choice)
+                            self.assertEqual((self.root/'TazUO.dll').read_bytes(),legacy)
+    def test_legacy_upgrade_requires_current_helper_before_rewrite(self):
+        (self.assets/frame.HELPER).unlink()
+        for combined in (False,True):
+            with self.subTest(legacy_combined=combined):
+                legacy=self.legacy(combined)
+                with self.assertRaisesRegex(ValueError,'component is missing'):self.prepare(True,combined)
+                self.assertEqual((self.root/'TazUO.dll').read_bytes(),legacy)
+                self.assertEqual((self.root/frame.BACKUP).read_bytes(),b'original')
+    def test_changed_fna_restores_legacy_original(self):
+        (self.root/'FNA.dll').write_bytes(b'new fna')
+        for combined in (False,True):
+            with self.subTest(legacy_combined=combined):
+                self.legacy(combined)
+                result=self.prepare(True,True)
+                self.assertFalse(result['frame_budget']['active']);self.assertFalse(result['render_trace']['active'])
+                self.assertEqual((self.root/'TazUO.dll').read_bytes(),b'original')
     def test_unknown_upstream_update_never_overwritten(self):
         self.prepare();(self.root/'TazUO.dll').write_bytes(b'upstream update')
         for choice in self.states:

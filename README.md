@@ -1,6 +1,14 @@
 # UO Memento Mobile
 
-## Updating to 0.2.12
+## Updating to 0.2.13
+
+This diagnostic update isolates first-visit area and interior stalls. The latest 0.2.12 Thor logs show that repeated Surface setup is fixed, while one network/update stall lasted about 4.5 seconds and other long frame gaps occurred outside the existing update timings. Warm routes were much smoother. Those measurements do not yet identify which asset, packet handler or graphics operation caused the pauses.
+
+With **Smooth world loading** enabled, the existing five-second summaries now include registered packet-handler dispatch timing and packet IDs, separated by network/plugin origin, plus game drawing, presentation and music-switch timing. This adds evidence for the next loading change; it does not change asset loading, texture creation, graphics calls or the existing packet budget.
+
+Install **UO-Memento-Mobile-0.2.13.apk** over your working app after logging out and saving/stopping the session. Keep app data and the installed runtime/client. The exact supported client is upgraded from its verified original backup on launch; no runtime reinstall or client reimport is needed. Keep your current 60 FPS, resolution, graphics and audio settings, **Smooth world loading** on, and **Render trace** / **Managed diagnostics** off. Start a fresh client, reproduce a cold route and first interior visit, then repeat them two or three times in the same process. Note the clock time and action at each large stutter, then export support logs from Journal. See the [short device checklist](docs/UO-Memento-Mobile-0.2.13-Instructions.txt) and [evidence and diagnostic scope](docs/OPTIMIZATION-0.2.13.md).
+
+## Previous update: 0.2.12
 
 Native Surface now retains its successful buffer configuration for the current Surface reader. A larger onscreen view no longer causes buffer setup and a forced full redraw on every changed frame. New readers and actual game-resolution changes still configure and redraw a complete baseline; Android's returned redraw bounds remain authoritative.
 

@@ -73,6 +73,8 @@ jobs:
         run: bash scripts/check-music-cache.sh
       - name: Verify exact client packet budget and startup hooks under .NET and Wine
         run: bash scripts/check-frame-budget.sh
+      - name: Verify first-visit load summaries and packet origins
+        run: dotnet run --project tests/load-trace-probe/LoadTraceProbe.csproj -c Release
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -244,7 +246,7 @@ jobs:
           for tab in realm client saves journal; do
             grep -q "assets/ui/background-$tab.png" runtime-work/apk-files.txt
           done
-          grep -q "versionCode='28'" runtime-work/badging.txt
+          grep -q "versionCode='29'" runtime-work/badging.txt
       - name: Keep the recovery certificate stable after its first release
         if: github.ref == 'refs/heads/main' && steps.anchor.outputs.exists == 'true'
         env:
@@ -287,16 +289,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-Mobile-0.2.12.apk
+          mv dist/app/build/outputs/apk/debug/app-debug.apk dist/UO-Memento-Mobile-0.2.13.apk
           mv dist/runtime-work/downloads/runtime-bridges.zip dist/runtime-bridges.zip
           curl -fL --retry 3 https://github.com/Russianranger/uo-android-launcher/releases/download/v0.1.0/runtime-corresponding-sources.tar.gz -o dist/runtime-corresponding-sources.tar.gz
           echo '492043660b1370e1910c8b8ca2b93be1f637f4929034f575591f14e67e015243  dist/runtime-corresponding-sources.tar.gz' | sha256sum --check
           cp scripts/recover-preview.py dist/recover-preview.py
-          cp docs/UO-Memento-Mobile-0.2.12-Instructions.txt dist/
-          git archive --format=zip --output=dist/UO-Memento-Mobile-0.2.12-source.zip HEAD
-          (cd dist && sha256sum UO-Memento-Mobile-0.2.12.apk UO-Memento-Mobile-0.2.12-source.zip UO-Memento-Mobile-0.2.12-Instructions.txt runtime-bridges.zip runtime-corresponding-sources.tar.gz client-runtime-arm64.tar.gz client-runtime-manifest.json wine-arm64ec-source.tar.gz fex-2510-source-with-submodules.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
-          if ! gh release view v0.2.12 >/dev/null 2>&1; then
-            gh release create v0.2.12 --target "$GITHUB_SHA" --draft --prerelease --title 'UO Memento Mobile 0.2.12 — Surface configuration fix' --notes-file docs/RELEASE-NOTES.md
+          cp docs/UO-Memento-Mobile-0.2.13-Instructions.txt dist/
+          git archive --format=zip --output=dist/UO-Memento-Mobile-0.2.13-source.zip HEAD
+          (cd dist && sha256sum UO-Memento-Mobile-0.2.13.apk UO-Memento-Mobile-0.2.13-source.zip UO-Memento-Mobile-0.2.13-Instructions.txt runtime-bridges.zip runtime-corresponding-sources.tar.gz client-runtime-arm64.tar.gz client-runtime-manifest.json wine-arm64ec-source.tar.gz fex-2510-source-with-submodules.tar.gz recover-preview.py) > dist/SHA256SUMS.txt
+          if ! gh release view v0.2.13 >/dev/null 2>&1; then
+            gh release create v0.2.13 --target "$GITHUB_SHA" --draft --prerelease --title 'UO Memento Mobile 0.2.13 — First-visit load diagnostics' --notes-file docs/RELEASE-NOTES.md
           fi
-          gh release upload v0.2.12 dist/UO-Memento-Mobile-0.2.12.apk dist/UO-Memento-Mobile-0.2.12-source.zip dist/UO-Memento-Mobile-0.2.12-Instructions.txt dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
-          gh release edit v0.2.12 --target "$GITHUB_SHA" --draft=false
+          gh release upload v0.2.13 dist/UO-Memento-Mobile-0.2.13.apk dist/UO-Memento-Mobile-0.2.13-source.zip dist/UO-Memento-Mobile-0.2.13-Instructions.txt dist/runtime-bridges.zip dist/runtime-corresponding-sources.tar.gz dist/SHA256SUMS.txt dist/recover-preview.py dist/client-runtime-arm64.tar.gz dist/client-runtime-manifest.json dist/wine-arm64ec-source.tar.gz dist/fex-2510-source-with-submodules.tar.gz --clobber
+          gh release edit v0.2.13 --target "$GITHUB_SHA" --draft=false

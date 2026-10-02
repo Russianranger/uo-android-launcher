@@ -1,19 +1,21 @@
-# UO Memento Mobile 0.2.12
+# UO Memento Mobile 0.2.13
 
-This update fixes repeated Native Surface buffer setup. Install it over your working app after logging out and saving/stopping the session, keeping app data. The existing application identity and signing certificate are retained; no runtime reinstall or client reimport is required.
+This update adds focused diagnostics for the severe pauses when visiting new areas or entering interiors for the first time. It is a measurement build, not a claimed loading-performance fix. Install it over your working app after logging out and saving/stopping the session, keeping app data. The application identity and signing certificate are retained; no runtime reinstall or client reimport is required.
 
-## Surface configuration
+## What the latest device logs establish
 
-The 0.2.11 Thor session recorded 4,068 Surface posts and 4,068 geometry setup calls. Region delivery saved 34.4% of pixel traffic, but every post still converted/redrew the full image. The receiver compared window query dimensions against game-buffer dimensions; the displayed view and configured image buffers can have different sizes.
+The 0.2.12 logs show zero repeated Surface buffer configuration during steady gameplay, confirming the previous receiver fix. First-visit pauses remain: one network-processing call took 4,489 ms inside a 4,498 ms update. Other cold frame gaps of roughly 419–980 ms occurred outside the measured update work, compared with roughly 29–44 ms on warm sections. Startup scene loading and draw-list filling reached approximately 1,040 ms and 401 ms. These timings locate some work on the main thread but do not yet identify its specific cause.
 
-The receiver now uses the existing per-Surface reader cache to remember successful buffer configuration. Setup runs for a fresh reader or an actual game-resolution change. Routine region updates and broad full frames at the same resolution retain their configuration. The retained image is still used to redraw Android's actual returned bounds, including buffer-age expansion, and actual locked-buffer dimensions/format are still validated.
+## New load boundaries
 
-This pass changes Surface geometry tracking only. Frame pacing, asset preparation, managed client patches, full X11 capture, graphics, audio, controller, backup/settings/session features and tab artwork retain their existing behavior.
+The existing **Smooth world loading** helper now records registered packet-handler dispatch timing, the slowest packet ID and separate network/plugin summaries. It also times `GameController.Draw`, the inherited FNA `EndDraw` presentation boundary and `AudioManager.PlayMusic`. Together with the retained update/network/scene/load/fill/audio and GC-count summaries, these boundaries separate registered handler dispatch from other packet-processing work and from drawing, presentation or music switching. Packet logging, plugin receive filters and parser lock/copy work remain outside the handler boundary; a long network time with a short handler time points to that remaining work.
 
-## Verification and device comparison
+The helper keeps one summary per five seconds, retaining only packet IDs, counts and timings; it does not log packet contents or every handler call. It adds no background loader or graphics calls and preserves the existing 5 ms / 1,000-packet budget. That budget checks between packets and cannot interrupt a single slow handler. This build does not change asset preparation, textures, frame pacing or audio delivery.
 
-The native receiver regression now models different view and buffer sizes. It fails on the 0.2.11 receiver and passes with this fix. It checks one initial setup, localized conversion, onscreen view changes, broad frames, actual resolution changes, fresh readers and buffer-age expansion alongside the existing socket and invalid-packet checks. CI rebuilds both native presentation endpoints, packages the current Android receiver, and checks Android build/lint and signing continuity before release.
+The launcher recognizes the previous exact frame-budget and combined render-budget revisions, verifies their preserved original client backup and upgrades from that original. Original and render-only states remain reversible. Unrecognized client binaries are left unchanged. The additional summaries require **Smooth world loading** on and the exact supported TazUO 5.2.0 / FNA binaries.
 
-Leave **Send changed regions** enabled. In support logs, `buffer_reconfigurations` should be zero in steady-state measurement windows after initial setup, with a setup again after a new Surface reader or game-resolution change. Small cursor/gump changes can lower the redrawn fraction; Android may still expand bounds. Walking/broad animation can still redraw the full image. Device stutter/FPS improvements require testing.
+## Device test
 
-Use the [device checklist](https://github.com/Russianranger/uo-android-launcher/releases/download/v0.2.12/UO-Memento-Mobile-0.2.12-Instructions.txt) and [fix/counter details](https://github.com/Russianranger/uo-android-launcher/blob/main/docs/OPTIMIZATION-0.2.12.md).
+Keep the existing 60 FPS, resolution, graphics and audio settings. Leave **Smooth world loading** on and **Render trace** / **Managed diagnostics** off. Start a fresh client, enter the world, follow an unvisited route and enter an interior. Note the clock time and action at each jarring pause. Repeat the same route and interior two or three times without closing the client, then export support logs from Journal. No new setup or diagnostic toggle is needed.
+
+Use the [device checklist](https://github.com/Russianranger/uo-android-launcher/releases/download/v0.2.13/UO-Memento-Mobile-0.2.13-Instructions.txt) and [diagnostic design](https://github.com/Russianranger/uo-android-launcher/blob/main/docs/OPTIMIZATION-0.2.13.md). Release validation is documented with the source; device performance conclusions depend on the new cold/warm comparison.
