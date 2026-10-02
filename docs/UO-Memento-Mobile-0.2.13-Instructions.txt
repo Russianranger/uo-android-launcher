@@ -1,0 +1,22 @@
+UO Memento Mobile 0.2.13 — First-visit load diagnostics
+
+This is a focused diagnostic build, not a claimed fix for first-visit loading stutters.
+
+Log out, save and stop your session, then install UO-Memento-Mobile-0.2.13.apk over your working app. Keep app data. No runtime reinstall, client reimport or new setup is needed.
+
+1. Keep the same settings
+   Keep your existing 60 FPS, resolution, renderer, Native Surface, changed-region delivery and audio options. Leave Smooth world loading ON. Leave Render trace and Managed diagnostics OFF. Do not change settings between the cold and warm runs.
+
+2. Reproduce the cold visit
+   Start a fresh client and enter the world. Walk a route that causes the jarring first-visit pauses and enter an interior for the first time in this process. At each large stutter, pause when convenient and note the clock time, your location and what you just did (entered an area, crossed a doorway, opened a window, or heard music change). A short phone note is enough.
+
+3. Repeat while warm
+   Without closing or restarting the client, repeat the same route and interior two or three times. Note which pauses disappear, remain or recur. Keep audio and controller use normal. Stay in the world briefly afterward so the next five-second summary can be written.
+
+4. Export logs
+   Export support logs from Journal. Include the noted clock times/actions and whether each pause happened only on the first pass. Do not clear caches or reinstall anything for this test.
+
+Expected diagnostic output
+   client-wine.log should contain FRAME_BUDGET_ACTIVE revision=2 with load_boundaries=true, followed by FRAME_BUDGET summaries that include draw, enddraw and music timings, plus packet IDs and separate network/plugin timings. The ordinary update/network/scene/load/fill/audio and GC-count fields remain. No packet contents are logged.
+
+These timings narrow cold pauses to registered packet-handler dispatch, other network-processing work, game drawing, presentation or music switching before selecting a loading optimization. The handler timing excludes packet logging, plugin receive filters and preceding parser lock/copy work. A five-second summary reports window maxima and overlapping totals, not each individual frame or an exact-time sample; it does not identify every loader. Surface buffer_reconfigurations should remain zero during steady gameplay after initial setup. Additional counters require Smooth world loading and the exact supported TazUO 5.2.0 / FNA binaries; unrecognized clients are left unchanged.

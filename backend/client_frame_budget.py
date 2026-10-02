@@ -7,8 +7,10 @@ import client_render_trace as trace
 from client_graphics import digest
 from uo_content import confined
 
-BUDGET = '03177f03654e5bea7aafedc93876ec34d81ad1c0f0c89c852526019cf5aa8585'
-COMBINED = '433f40da7280f1a3e379eb5716561cac21d94d6e5574e3e4e09b44f770298e71'
+LEGACY_BUDGET = '03177f03654e5bea7aafedc93876ec34d81ad1c0f0c89c852526019cf5aa8585'
+LEGACY_COMBINED = '433f40da7280f1a3e379eb5716561cac21d94d6e5574e3e4e09b44f770298e71'
+BUDGET = 'aac6afae48a00ddeef711238b5e84491ae4b9bd0aff89e91fb4fc956fc0b0b76'
+COMBINED = 'fe64075b3ec0ebbea7d07ffc8b4a010e53ba7767018491b6370026d86e7c3a80'
 PATCH = 'tazuo-5.2-frame-budget.patch.b64'
 COMBINED_PATCH = 'tazuo-5.2-frame-budget-render.patch.b64'
 HELPER = 'Memento.FrameBudget.dll'
@@ -26,9 +28,9 @@ def prepare(root, metadata, runtime_assets, enabled=True, render_enabled=False):
         return confined(root, candidate.relative_to(root))
     target, fna = library('TazUO.dll'), library('FNA.dll')
     current, fna_hash = digest(target), digest(fna)
-    frame = {'requested':enabled, 'active':False, 'revision':1, 'budget_ms':5, 'packet_limit':1000, 'before_sha256':current}
+    frame = {'requested':enabled, 'active':False, 'revision':2, 'budget_ms':5, 'packet_limit':1000, 'before_sha256':current}
     render = {'requested':render_enabled, 'active':False, 'diagnostic_only':True, 'before_sha256':current, 'fna_sha256':fna_hash}
-    known = (trace.ORIGINAL, trace.INSTRUMENTED, BUDGET, COMBINED)
+    known = (trace.ORIGINAL, trace.INSTRUMENTED, BUDGET, COMBINED, LEGACY_BUDGET, LEGACY_COMBINED)
     if current not in known:
         for report in (frame, render):report.update(action='unchanged_unrecognized_client', active_sha256=current)
         return {'frame_budget':frame, 'render_trace':render}
@@ -36,8 +38,10 @@ def prepare(root, metadata, runtime_assets, enabled=True, render_enabled=False):
     use_frame, use_render = enabled and fna_hash == trace.FNA, render_enabled and fna_hash == trace.FNA
     desired = COMBINED if use_frame and use_render else BUDGET if use_frame else trace.INSTRUMENTED if use_render else trace.ORIGINAL
     backups = []
-    if current in (BUDGET, COMBINED):backups.append(folder/BACKUP)
-    if current in (trace.INSTRUMENTED, COMBINED):backups.append(folder/trace.BACKUP)
+    # Earlier APKs retain the same verified original. Rebuild from that backup
+    # instead of composing a new delta over an already modified client.
+    if current in (BUDGET, COMBINED, LEGACY_BUDGET, LEGACY_COMBINED):backups.append(folder/BACKUP)
+    if current in (trace.INSTRUMENTED, COMBINED, LEGACY_COMBINED):backups.append(folder/trace.BACKUP)
     for backup in backups:
         if backup.is_symlink() or digest(backup) != trace.ORIGINAL:
             raise ValueError('Original client backup is missing or changed: '+backup.name+'; restore TazUO.dll from the original client package')

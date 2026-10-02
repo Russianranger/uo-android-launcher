@@ -53,18 +53,24 @@ var expected = music ? new[] { "ClassicUO.Assets.SoundsLoader::Load", "ClassicUO
     "ClassicUO.GameController::ProcessNetworkPackets", "ClassicUO.GameController::Update",
     "ClassicUO.Network.PacketHandlers.PacketParser::ParsePackets", "ClassicUO.Game.Scenes.GameScene::Update",
     "ClassicUO.Game.Scenes.GameScene::Load", "ClassicUO.Game.Scenes.GameScene::FillGameObjectList", "ClassicUO.Game.Managers.AudioManager::Update",
-    "ClassicUO.Network.LoginHandshake::Connect", "ClassicUO.Network.LoginHandshake::AfterRelayConnect"
+    "ClassicUO.Network.LoginHandshake::Connect", "ClassicUO.Network.LoginHandshake::AfterRelayConnect",
+    "ClassicUO.GameController::Draw", "ClassicUO.Game.Managers.AudioManager::PlayMusic"
 } : new[] {"ClassicUO.Game.Scenes.GameScene::DrawRenderList", "ClassicUO.Game.Scenes.GameScene::FillGameObjectList"};
 if (frame) {
     if (original.Architecture != updated.Architecture || original.Attributes != updated.Attributes ||
         original.GetTypes().Count() != updated.GetTypes().Count() ||
-        original.GetTypes().Sum(t=>t.Methods.Count)+1 != updated.GetTypes().Sum(t=>t.Methods.Count) ||
+        original.GetTypes().Sum(t=>t.Methods.Count)+3 != updated.GetTypes().Sum(t=>t.Methods.Count) ||
         original.GetTypes().Sum(t=>t.Fields.Count) != updated.GetTypes().Sum(t=>t.Fields.Count)) throw new Exception("unexpected frame metadata change");
     var added = updated.AssemblyReferences.Select(a=>a.FullName).Except(original.AssemblyReferences.Select(a=>a.FullName)).ToArray();
-    if (added.Length != 1 || !added[0].StartsWith("Memento.FrameBudget, Version=1.0.0.0,")) throw new Exception("unexpected frame dependency change");
+    if (added.Length != 1 || !added[0].StartsWith("Memento.FrameBudget, Version=1.0.0.0,")) throw new Exception("unexpected frame dependency change: " + string.Join(",",added));
     if (original.AssemblyReferences.Any(a=>!updated.AssemblyReferences.Any(b=>b.FullName==a.FullName))) throw new Exception("removed dependency");
     var newMethods=updated.GetTypes().SelectMany(t=>t.Methods).Select(m=>m.FullName).Except(original.GetTypes().SelectMany(t=>t.Methods).Select(m=>m.FullName)).ToArray();
-    if(newMethods.Length!=1 || newMethods[0]!="System.Void ClassicUO.Network.PacketHandlers.PacketParser::MementoClearBuffers()") throw new Exception("unexpected frame member");
+    var expectedMembers = new[] {
+        "System.Void ClassicUO.GameController::EndDraw()",
+        "System.Void ClassicUO.Network.PacketHandlers.PacketParser::MementoClearBuffers()",
+        "System.Void ClassicUO.Network.PacketHandlers.PacketParser::MementoAnalyzePacket(ClassicUO.Game.World,System.ReadOnlySpan`1<System.Byte>,System.Int32,System.Boolean)"
+    };
+    if(!newMethods.Order().SequenceEqual(expectedMembers.Order())) throw new Exception("unexpected frame member: " + string.Join(",",newMethods));
 }
 if (music) {
     if (original.Architecture != updated.Architecture || original.Attributes != updated.Attributes ||
