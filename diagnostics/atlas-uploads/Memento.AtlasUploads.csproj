@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><AssemblyName>Memento.AtlasUploads</AssemblyName><DebugType>none</DebugType><Deterministic>true</Deterministic><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../frame-budget/Memento.FrameBudget.csproj" />
+    <Reference Include="FNA"><HintPath>../../runtime-work/music-fixture/original/FNA.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

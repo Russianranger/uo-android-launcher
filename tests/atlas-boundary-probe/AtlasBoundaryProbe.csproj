@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><AllowUnsafeBlocks>true</AllowUnsafeBlocks><AssemblyName>AtlasBoundaryProbe</AssemblyName></PropertyGroup>
+  <ItemGroup><Reference Include="FNA"><HintPath>../../runtime-work/music-fixture/original/FNA.dll</HintPath><Private>false</Private></Reference><ProjectReference Include="../../diagnostics/frame-budget/Memento.FrameBudget.csproj" /><ProjectReference Include="../../diagnostics/atlas-uploads/Memento.AtlasUploads.csproj" /></ItemGroup>
+</Project>

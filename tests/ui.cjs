@@ -17,7 +17,7 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
    if(op==='session_play'&&window.holdSession){window.nativeReport={session_busy:true,session_cancellable:true,session_seconds:12,session_status:'Starting server · waiting for the world to be ready…'};window.heldSession=id;return;}
    if(op==='session_play'&&window.sessionFailure){setTimeout(()=>window.nativeReply(id,{ok:false,error:window.sessionFailure}),0);return;}
    if(op==='client_start'||op==='session_play')window.clientActive=true;
-   if(op==='native_state')result={alive:true,installed:true,status:'Realm runtime ready',version:'0.2.13',free_bytes:24*1073741824,...window.nativeReport};
+   if(op==='native_state')result={alive:true,installed:true,status:'Realm runtime ready',version:'0.2.14',free_bytes:24*1073741824,...window.nativeReport};
    if(op==='client_native_state')result={alive:!!window.clientActive,display_ready:!!window.clientActive,installed:true,status:'TazUO is ready to launch.',launch:{sdl_graphics:window.graphicsReport}};
    if(op==='state')result={running:false,ready:false,build:{revision:'916d1ec666376ef44366c986befa3200deb93eb0',ref:'main'},client:{executable:'Client/TazUO.exe',architecture:'x64',dotnet_version:'10.0.0'},jobs:[],...window.realmReport};
    if(op==='state')result.jobs=[...result.jobs,...window.mockJobs];

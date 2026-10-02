@@ -9,3 +9,6 @@ dotnet build diagnostics/render-trace/Memento.RenderTrace.csproj -c Release -o r
 cp runtime-work/render-trace/Memento.RenderTrace.dll backend-assets/Memento.RenderTrace.dll
 dotnet build diagnostics/frame-budget/Memento.FrameBudget.csproj -c Release -o runtime-work/frame-budget --nologo
 cp runtime-work/frame-budget/Memento.FrameBudget.dll backend-assets/Memento.FrameBudget.dll
+python3 scripts/fetch-music-fixture.py runtime-work/music-fixture/original
+dotnet build diagnostics/atlas-uploads/Memento.AtlasUploads.csproj -c Release -o runtime-work/atlas-uploads --nologo
+cp runtime-work/atlas-uploads/Memento.AtlasUploads.dll backend-assets/Memento.AtlasUploads.dll

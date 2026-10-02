@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 
 import client_render_trace as trace
+import client_atlas_uploads as atlas
 from client_graphics import digest
 from uo_content import confined
 
@@ -35,7 +36,8 @@ def prepare(root, metadata, runtime_assets, enabled=True, render_enabled=False):
         for report in (frame, render):report.update(action='unchanged_unrecognized_client', active_sha256=current)
         return {'frame_budget':frame, 'render_trace':render}
     assets = Path(runtime_assets)
-    use_frame, use_render = enabled and fna_hash == trace.FNA, render_enabled and fna_hash == trace.FNA
+    supported = fna_hash == trace.FNA or atlas.supported_fna(folder, fna_hash)
+    use_frame, use_render = enabled and supported, render_enabled and supported
     desired = COMBINED if use_frame and use_render else BUDGET if use_frame else trace.INSTRUMENTED if use_render else trace.ORIGINAL
     backups = []
     # Earlier APKs retain the same verified original. Rebuild from that backup

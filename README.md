@@ -1,5 +1,11 @@
 # UO Memento Mobile
 
+## Updating to 0.2.14
+
+The latest first-visit traces show repeated FNA presentation waits while Android copy/post stays inexpensive. This update coalesces adjacent new terrain/animation atlas uploads on the supported Turnip client, reducing separate GPU upload commands with unchanged sprite pixels and ordering. Staging is bounded to 4 MiB; drawing, readbacks, mutations and disposal flush it before proceeding. It retains the Surface geometry fix, packet budget, music cache and existing launcher features.
+
+Install **UO-Memento-Mobile-0.2.14.apk** over your working app after logging out and saving/stopping the session. Keep app data and the installed runtime/client. Keep your current 60 FPS and other settings, **Smooth world loading** on, and **Render trace** / **Managed diagnostics** off. Compare the same fresh route/interior with two revisits, then export Journal logs. See the [device checklist](docs/UO-Memento-Mobile-0.2.14-Instructions.txt) and [implementation and limitations](docs/OPTIMIZATION-0.2.14.md). Actual improvement on Thor still requires this comparison.
+
 ## Updating to 0.2.13
 
 This diagnostic update isolates first-visit area and interior stalls. The latest 0.2.12 Thor logs show that repeated Surface setup is fixed, while one network/update stall lasted about 4.5 seconds and other long frame gaps occurred outside the existing update timings. Warm routes were much smoother. Those measurements do not yet identify which asset, packet handler or graphics operation caused the pauses.
