@@ -13,6 +13,7 @@ import client_graphics
 import client_render_trace
 import client_music_cache
 import client_frame_budget
+import client_atlas_uploads
 import client_runtime
 import client_prefix
 from client_health import ClientHealth, prepare_render_progress
@@ -71,6 +72,7 @@ class Supervisor:
         self.env.pop('MEMENTO_MANAGED_LOG',None)
         self.env.pop('MEMENTO_RENDER_TRACE',None)
         self.env.pop('MEMENTO_RENDER_PROGRESS',None)
+        self.env.pop('MEMENTO_ATLAS_UPLOADS',None)
         audio_driver=request.get('audio_driver','wasapi')
         if audio_driver not in ('wasapi','directsound'):raise ValueError('Invalid audio driver')
         # SDL 3 uses AUDIO_DRIVER; SDL 2 and SDL 3's legacy alias use
@@ -193,6 +195,8 @@ class Supervisor:
         if self.request.get('gump_space',False) and self.request['resolution']!='1280x720':
             raise ValueError('The 1098x720 world viewport requires a 1280x720 display')
         info=self.request['client']
+        frame_budget=self.request.get('frame_budget',True)
+        if not isinstance(frame_budget,bool):raise ValueError('Invalid client scheduling option')
         if not confined(CLIENT,info['executable']).is_file():
             raise ValueError('Imported client executable is missing')
         # Repair existing imports on APK upgrade, before opening the display.
@@ -201,10 +205,12 @@ class Supervisor:
         if not isinstance(graphics_fixes,bool):raise ValueError('Invalid SDL graphics fixes option')
         report['sdl_graphics']=client_graphics.prepare(CLIENT,info,self.root,
             graphics_fixes and self.request['renderer']=='turnip')
+        report['atlas_uploads']=client_atlas_uploads.prepare(CLIENT,info,self.root,
+            frame_budget and self.request['renderer']=='turnip')
         report.update(client_frame_budget.prepare(CLIENT,info,self.root,
             self.request.get('frame_budget',True),self.request.get('render_trace',False)))
         report['music_cache']=client_music_cache.prepare(CLIENT,info,self.root,self.request.get('music_cache',True))
-        self.update(sdl_graphics=report['sdl_graphics'],render_trace=report['render_trace'],music_cache=report['music_cache'],frame_budget=report['frame_budget'])
+        self.update(sdl_graphics=report['sdl_graphics'],render_trace=report['render_trace'],music_cache=report['music_cache'],frame_budget=report['frame_budget'],atlas_uploads=report['atlas_uploads'])
         renderer_settings(CLIENT,info,self.request['renderer'])
         report['pacing']=frame_settings(CLIENT,info,self.request['display_fps'])
         self.update(pacing=report['pacing'])
@@ -241,6 +247,12 @@ class Supervisor:
             frame_hook='Z:'+str(hook).replace('/','\\')
             existing=env.get('DOTNET_STARTUP_HOOKS')
             env['DOTNET_STARTUP_HOOKS']=frame_hook+(';' + existing if existing else '')
+        if self.status.get('atlas_uploads',{}).get('active') and self.status.get('frame_budget',{}).get('active'):
+            hook=self.root/client_atlas_uploads.HELPER
+            atlas_hook='Z:'+str(hook).replace('/','\\')
+            # The atlas hook registers with the already loaded timing helper.
+            env['DOTNET_STARTUP_HOOKS'] += ';' + atlas_hook
+            env['MEMENTO_ATLAS_UPLOADS']='1'
         env['WINEDEBUG']='-all,err+all,trace+loaddll'
         write_json(LOGS/'client-compatibility.json',{
             'runtime_backend':RUNTIME_ID,
@@ -250,6 +262,7 @@ class Supervisor:
             'translator':'FEX Windows ARM64EC (upstream defaults)',
             'render_trace':self.status.get('render_trace',{}),
             'frame_budget':self.status.get('frame_budget',{}),
+            'atlas_uploads':self.status.get('atlas_uploads',{}),
             'attempt_started_utc':self.status['attempt_started_utc'],
             'environment':{key:env[key] for key in ('WINEDEBUG','WINEDLLOVERRIDES','WINEARCH','SDL_AUDIO_DRIVER','SDL_AUDIODRIVER')},
             'proot_acceleration_requested':self.status['proot_acceleration_requested'],

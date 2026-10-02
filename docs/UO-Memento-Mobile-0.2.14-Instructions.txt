@@ -1,0 +1,22 @@
+UO Memento Mobile 0.2.14 — Batch first-use atlas uploads
+
+Log out, save and stop the session, then install UO-Memento-Mobile-0.2.14.apk over your working app. Keep app data, the runtime and your imported client. No new setup or client import is needed.
+
+1. Keep the same settings
+   Keep your existing 60 FPS, resolution, Turnip, Native Surface, changed-region delivery and audio options. Leave Smooth world loading ON. Leave Render trace and Managed diagnostics OFF. Do not change settings between the first visit and revisits.
+
+2. Visit new terrain and an interior
+   Start a fresh client and walk the same route that stuttered in 0.2.13. Enter an interior and encounter a few NPCs or creatures. Note approximate clock times/actions for substantial pauses. Check terrain, roofs, walls, character animations, minimap and custom PNG art for missing or altered pixels.
+
+3. Repeat while warm
+   Without restarting the client, repeat the route/interior twice. Note whether first-visit pauses are shorter and whether repeat visits remain smooth. Stay in the world briefly afterward so another five-second summary is written.
+
+4. Export support logs
+   Export support logs from Journal, including approximate pause times/actions and whether each occurred only on the first pass. Do not clear caches or reinstall the runtime.
+
+Expected output
+   client-config.json should report atlas_uploads.active=true for the supported exact TazUO/FNA/Renderer/Utility/FNA3D/SDL set. client-wine.log should contain ATLAS_UPLOADS_ACTIVE and five-second ATLAS_UPLOADS summaries, alongside the existing FRAME_BUDGET revision=2 timings. The new summaries report sprite-upload requests, native upload calls, merged writes, bytes and batching/flush costs.
+
+The change coalesces adjacent new atlas reservations without touching old sprite pixels or leaving gaps inside a combined upload. It initializes only the new sprite's reserved one-pixel border to transparent; sprite pixels, UVs and packing stay unchanged. Pending pixels are copied immediately and committed before native drawing, readback, texture mutation or presentation. Staging remains on the drawing thread and is bounded to 4 MiB; no background GPU loader or full atlas copy is added. The existing Smooth world loading option controls the optimization with Turnip. Disabling it or switching renderer restores the verified original FNA and Renderer libraries. Unknown client binaries are preserved.
+
+Automated tests verify upload reduction and unchanged pixels/ordering. This test establishes its actual effect on Thor. CPU decode, a slow packet handler and other driver waits can still cause a first-visit pause.

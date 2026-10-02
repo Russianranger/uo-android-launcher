@@ -25,6 +25,13 @@ namespace Memento
         public const int PacketLimit = 1000;
         static readonly long BudgetTicks = Math.Max(1, Stopwatch.Frequency / 200);
         static readonly string[] StageNames = { "update", "network", "scene", "load", "audio", "fill", "draw", "enddraw", "music" };
+        static Action drawBegin, drawEnd;
+        // The optional exact-client atlas helper registers after this startup
+        // hook. Keep the timing helper independent of FNA and graphics types.
+        public static void RegisterDrawBoundaries(Action begin, Action end)
+        {
+            drawBegin = begin; drawEnd = end;
+        }
         [ThreadStatic] static State state;
         sealed class State
         {
@@ -95,12 +102,16 @@ namespace Memento
         public static long Begin(int stage)
         {
             var s = Current; long now = Stopwatch.GetTimestamp();
+            if (stage == Draw) drawBegin?.Invoke();
             if (stage == Update) { if (s.lastUpdate != 0) s.updateGap = Math.Max(s.updateGap, now - s.lastUpdate); s.lastUpdate = now; }
             if (stage == Audio) { if (s.lastAudio != 0) s.audioGap = Math.Max(s.audioGap, now - s.lastAudio); s.lastAudio = now; }
             return now;
         }
         public static void End(int stage, long began)
         {
+            // Atlas scope cleanup issues no GPU calls, including when the
+            // original Draw is unwinding an exception. Native boundaries flush.
+            if (stage == Draw) drawEnd?.Invoke();
             var s = Current; long now = Stopwatch.GetTimestamp(), elapsed = Math.Max(0, now - began);
             s.calls[stage]++; s.total[stage] += elapsed; s.max[stage] = Math.Max(s.max[stage], elapsed);
             if (stage != Update) return;
