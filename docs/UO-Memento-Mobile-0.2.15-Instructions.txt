@@ -1,0 +1,9 @@
+UO Memento Mobile 0.2.15 — Launcher menu wording
+
+Log out, save and stop the session, then install UO-Memento-Mobile-0.2.15.apk over your working app. Keep app data, your runtime, imported client and existing settings.
+
+Open the touch gear/quick menu while in the client. The return button should say "Back to Launcher Menu". Selecting it returns to the launcher management screen with the same existing behavior. Display-failure messages use the same destination wording.
+
+This release contains the menu-label correction and the documented analysis of the 0.2.14 Thor export. It adds no performance optimization or instrumentation. Atlas batching, revision 2 cold-load diagnostics, Native Surface, changed-region delivery, Surface geometry caching, Wine/FEX, audio, packet budgeting and controls retain their current implementation.
+
+No repeated cold-route qualification is required just to verify this wording. When investigating remaining pauses, retain your 60 FPS, Turnip, Smooth world loading ON, Render trace OFF and Managed diagnostics OFF, and include clock-time/action notes with the full Journal log export.

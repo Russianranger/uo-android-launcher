@@ -43,7 +43,7 @@ public final class ClientActivity extends Activity {
             if(launch!=null&&launch.has("error")&&!failureShown&&hasWindowFocus()&&!isFinishing()) {
                 failureShown=true;controller.capture(false);display.input.releaseAll();setMenuOpen(true);
                 new AlertDialog.Builder(ClientActivity.this).setTitle(launch.optBoolean("client_started")?"Client stopped unexpectedly":"Client startup failed").setMessage(launch.optString("error"))
-                    .setPositiveButton("Back to Client",(dialog,which)->finish()).setCancelable(false).show();
+                    .setPositiveButton("Back to Launcher Menu",(dialog,which)->finish()).setCancelable(false).show();
             }
         }catch(Exception e){status.setText(e.getMessage());}
         handler.postDelayed(this,1000);
@@ -69,7 +69,7 @@ public final class ClientActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);
         menu=new LinearLayout(this);menu.setOrientation(LinearLayout.VERTICAL);menu.setPadding(dp(12),dp(8),dp(12),dp(12));
         menu.setBackground(panelBackground(0xd010191c));menu.setOnClickListener(v->{});
-        addMenuButton("Back to Client",v->finish());
+        addMenuButton("Back to Launcher Menu",v->finish());
         addMenuButton("Keyboard",v->textDialog());
         addMenuButton("Controller mappings",v->controllerDialog());
         addMenuButton("Capture external mouse",v->{setMenuOpen(false);display.post(()->display.requestPointerCapture());});
@@ -232,7 +232,7 @@ public final class ClientActivity extends Activity {
             }catch(IOException e){if(!closed)failure(e);}
             finally {closeInput();try{if(socket!=null)socket.close();}catch(IOException ignored){}connection=null;}
         },"TRASC client display").start();}
-        void failure(Exception error){if(closed)return;runtime.server.recordFailure("client_display",error);post(()->{displayError="Display disconnected: "+error.getMessage()+" · Back to Client to reconnect";if(!isDestroyed()){status.setText(displayError);setMenuOpen(true);}});}
+        void failure(Exception error){if(closed)return;runtime.server.recordFailure("client_display",error);post(()->{displayError="Display disconnected: "+error.getMessage()+" · Back to Launcher Menu to reconnect";if(!isDestroyed()){status.setText(displayError);setMenuOpen(true);}});}
         @Override public void resize(int w,int h){frameWidth=w;frameHeight=h;synchronized(pixelsLock){if(!nativeActive)bitmap=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);}post(()->{input.size(w,h);arrangeSurface();});}
         void arrangeSurface(){
             if(!nativeActive||nativeDisplay==null||getWidth()==0||getHeight()==0)return;

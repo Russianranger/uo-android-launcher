@@ -1,5 +1,9 @@
 # UO Memento Mobile
 
+## Updating to 0.2.15
+
+The touch quick-menu return action now says **Back to Launcher Menu**; matching display-failure messages use the same destination. Install **UO-Memento-Mobile-0.2.15.apk** over your working app, retaining its data/runtime/client. This release contains the wording correction and [0.2.14 Thor telemetry analysis](docs/THOR-0.2.14-ANALYSIS.md); it introduces no new performance change. See the [short device check](docs/UO-Memento-Mobile-0.2.15-Instructions.txt).
+
 ## Updating to 0.2.14
 
 The latest first-visit traces show repeated FNA presentation waits while Android copy/post stays inexpensive. This update coalesces adjacent new terrain/animation atlas uploads on the supported Turnip client, reducing separate GPU upload commands with unchanged sprite pixels and ordering. Staging is bounded to 4 MiB; drawing, readbacks, mutations and disposal flush it before proceeding. It retains the Surface geometry fix, packet budget, music cache and existing launcher features.

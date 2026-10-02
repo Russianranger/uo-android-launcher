@@ -1,11 +1,9 @@
-# UO Memento Mobile 0.2.14
+# UO Memento Mobile 0.2.15
 
-This update batches adjacent first-use terrain and animation atlas uploads on the supported Turnip client. It reduces separate GPU upload commands while preserving sprite pixels and upload order. Install over your working app after logging out and saving/stopping the session; keep app data and the installed runtime/client.
+The touch quick menu now says **Back to Launcher Menu**, accurately naming the screen it opens. Display-failure dialog and reconnect guidance use the same wording. The existing return action is unchanged.
 
-The 0.2.13 device logs show repeated 100–540 ms FNA presentation waits while Android copy/post remain below one millisecond and warm visits are smooth. Individual sprite uploads are a concrete graphics cost to reduce; these logs do not prove they explain every pause. CPU decoding, expensive item handlers and other driver waits remain possible.
+Install over the working app after logging out and saving/stopping the session. The application ID and signing certificate remain the same; keep app data, the runtime and imported client.
 
-Queued sprite pixels are copied unchanged. Only their newly reserved one-pixel borders are initialized to transparent, allowing padded reservations to merge with no holes or changes to old sprites. Queued data is limited to 4 MiB. Uploads commit before native drawing, readback, texture changes, presentation and disposal, including the managed disposal entry before its texture handle is cleared. There is no background graphics thread or full atlas shadow. Exact FNA/Renderer patches preserve identities, original native entry points and unrelated methods/resources. Verified originals support restoration; unknown upstream files remain untouched.
+The 0.2.14 Thor export confirms atlas batching and revision 2 diagnostics are active. After initial world entry, atlas flush maxima stayed below 0.7 ms, while FNA EndDraw still reached 1,365.524 and 1,653.006 ms. Packet handlers contributed separate 163–172 ms pauses. Later gameplay windows were much smoother, but the export contains no action markers to identify individual cold visits or warm repeats.
 
-The existing Surface fix, changed-region delivery, packet budget, music cache, controller and launcher features remain. Keep 60 FPS, Turnip, Smooth world loading ON, and Render trace / Managed diagnostics OFF. Prior timings remain; new atlas summaries measure upload reduction.
-
-Follow the [device checklist](https://github.com/Russianranger/uo-android-launcher/releases/download/v0.2.14/UO-Memento-Mobile-0.2.14-Instructions.txt): visit the same area/interior, repeat without restarting, note pauses or visual defects, then export Journal logs. Automated checks establish pixels, ordering, migration and upload reduction. Actual Thor performance still requires this comparison.
+This is a wording update, not a claimed stutter fix. No client/runtime/presentation performance code or diagnostics are changed. See [the telemetry analysis](https://github.com/Russianranger/uo-android-launcher/blob/main/docs/THOR-0.2.14-ANALYSIS.md) and [short device check](https://github.com/Russianranger/uo-android-launcher/releases/download/v0.2.15/UO-Memento-Mobile-0.2.15-Instructions.txt).
