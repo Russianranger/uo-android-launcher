@@ -1,0 +1,23 @@
+UO Memento Mobile 0.2.16 — Cold first-visit diagnostic build
+
+1. Log out, save and close your current session. Install UO-Memento-Mobile-0.2.16.apk over the working app; keep app data, the installed runtime and imported client.
+
+2. In Client → Client options, enable "Cold-load timing (Thor test)". Keep your existing 60 FPS, Turnip, Native Surface, Send changed regions, 1280×720 / 1098×720 world, audio and controller settings. Keep Smooth world loading ON, music caching ON, Render crash tracing OFF, Detailed client diagnostics OFF and optional SDL update OFF. The new diagnostic option is independent of those older tracing options. Relaunch the client to activate it.
+
+3. Enter the world in a fresh client process. Wait about 30 seconds for initial login/loading to settle. Choose a route and an interior you have not visited in this process. Avoid opening the world map, inventory or unrelated gumps during this short test.
+
+4. Before each phase, open the touch gear menu → "Mark test phase", choose the matching phase and close the menu. Give the overlay about three seconds to settle before moving:
+   - Outdoor first pass: walk for about one minute into terrain not yet visited in this client process.
+   - Interior first entry: enter the new interior, wait 20 seconds and move around for about 30 seconds.
+   - Interior exit: leave that interior and wait about 10 seconds.
+   - Interior re-entry: enter the SAME interior again and repeat the movement for about 30 seconds.
+   - Outdoor retrace: walk back along the SAME outdoor route for about one minute, without restarting the client.
+   - Test finished: stand still for another 10 seconds so summaries can flush.
+
+5. Note whether large pauses were visible and any music change, crowded scene or extra action near them. Log out and save/close the session, then Journal → Export support logs. Send the complete ZIP. Do not launch another client session before exporting, and do not clear any caches or app data.
+
+6. Turn "Cold-load timing (Thor test)" off and relaunch for normal play. This removes the extra FNA/Vulkan observers and restores the existing atlas FNA build; atlas batching and the 0.2.13 summaries remain active with Smooth world loading.
+
+The test records per-frame Update/Draw/EndDraw, packet handlers, atlas activity, allocations, GC pause totals and thread CPU; passive native graphics timing separates shader/pipeline creation, resource creation, submission, present and waits. Android capture/copy/Surface tails and optional process I/O/scheduling counters are included. It makes no new performance optimization or claim that the cold stutters are fixed. Instrumentation itself has some overhead; compare cold and warm phases in the same session.
+
+"Back to Launcher Menu" remains the touch quick-menu return label. This build keeps the existing signing identity, runtime, rendering, audio, server and input behavior.

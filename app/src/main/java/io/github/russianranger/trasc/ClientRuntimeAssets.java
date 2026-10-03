@@ -9,6 +9,7 @@ final class ClientRuntimeAssets {
         "client_music_cache.py", "tazuo-5.2-music-cache.patch.b64",
         "client_frame_budget.py", "tazuo-5.2-frame-budget.patch.b64", "tazuo-5.2-frame-budget-render.patch.b64", "Memento.FrameBudget.dll",
         "client_atlas_uploads.py", "tazuo-5.2-atlas-fna.patch.b64", "tazuo-5.2-atlas-renderer.patch.b64", "Memento.AtlasUploads.dll",
+        "client_cold_trace.py", "tazuo-5.2-cold-trace-fna.patch.b64", "libmemento-vulkan-trace.so", "vulkan-trace-bundle.json",
         "uo_client_runner.py", "client_runtime.py", "client_prefix.py", "uo_content.py", "client_presentation.py",
         "client_audio.py", "client_health.py", "client_graphics.py", "log_retention.py",
         "graphics_probe.py", "runtime_probe.py",

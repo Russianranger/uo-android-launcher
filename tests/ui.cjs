@@ -17,7 +17,7 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
    if(op==='session_play'&&window.holdSession){window.nativeReport={session_busy:true,session_cancellable:true,session_seconds:12,session_status:'Starting server · waiting for the world to be ready…'};window.heldSession=id;return;}
    if(op==='session_play'&&window.sessionFailure){setTimeout(()=>window.nativeReply(id,{ok:false,error:window.sessionFailure}),0);return;}
    if(op==='client_start'||op==='session_play')window.clientActive=true;
-   if(op==='native_state')result={alive:true,installed:true,status:'Realm runtime ready',version:'0.2.15',free_bytes:24*1073741824,...window.nativeReport};
+   if(op==='native_state')result={alive:true,installed:true,status:'Realm runtime ready',version:'0.2.16',free_bytes:24*1073741824,...window.nativeReport};
    if(op==='client_native_state')result={alive:!!window.clientActive,display_ready:!!window.clientActive,installed:true,status:'TazUO is ready to launch.',launch:{sdl_graphics:window.graphicsReport}};
    if(op==='state')result={running:false,ready:false,build:{revision:'916d1ec666376ef44366c986befa3200deb93eb0',ref:'main'},client:{executable:'Client/TazUO.exe',architecture:'x64',dotnet_version:'10.0.0'},jobs:[],...window.realmReport};
    if(op==='state')result.jobs=[...result.jobs,...window.mockJobs];
@@ -43,7 +43,7 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  await page.screenshot({path:'ui-reports/realm-landscape.png',fullPage:true});
  await page.locator('[data-tab="client"]').click();
  if(await page.locator('#client-options').evaluate(node=>node.open))throw Error('Client options must start collapsed');
- if(!await page.evaluate(()=>['renderer','resolution','presentation','dirty-regions','fps','gump-space','audio','audio-driver','smooth-audio','client-acceleration','frame-budget','music-cache','sdl-graphics-fixes','render-trace','managed-diagnostics'].every(id=>document.getElementById(id).closest('#client-options'))))throw Error('Client controls escaped the options dropdown');
+ if(!await page.evaluate(()=>['renderer','resolution','presentation','dirty-regions','fps','gump-space','audio','audio-driver','smooth-audio','client-acceleration','frame-budget','music-cache','sdl-graphics-fixes','render-trace','managed-diagnostics','cold-trace'].every(id=>document.getElementById(id).closest('#client-options'))))throw Error('Client controls escaped the options dropdown');
  await page.locator('#client-options > summary').click();
  await page.locator('[data-action="controller_open"]').click();
  if(!await page.evaluate(()=>window.calls.some(c=>c.op==='controller_open')))throw Error('Controller action not connected');
@@ -55,17 +55,18 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  if(!await page.locator('#frame-budget').isChecked())throw Error('Frame budget must default on');
  if(!await page.locator('#music-cache').isChecked())throw Error('Music cache must default on');
  if(await page.locator('#render-trace').isChecked())throw Error('Render tracing must default off');
+ if(await page.locator('#cold-trace').isChecked())throw Error('Cold-load diagnostics must default off');
  if(await page.locator('#managed-diagnostics').isChecked())throw Error('Managed diagnostics must default off');
  if(await page.locator('#sdl-graphics-fixes').isChecked())throw Error('FEX must start with original graphics libraries');
  await page.evaluate(async()=>{window.graphicsReport={active_version:'3.4.16',action:'updated_known_tazuo_5.2_pair'};await refresh();});
  await page.waitForFunction(()=>document.getElementById('sdl-graphics-status').textContent.includes('3.4.16 active'));
  await page.evaluate(async()=>{window.graphicsReport={active_version:'unrecognized',action:'unchanged_unrecognized_libraries'};await refresh();});
  await page.waitForFunction(()=>document.getElementById('sdl-graphics-status').textContent.includes('left as imported'));
- await page.evaluate(()=>localStorage.setItem('launch',JSON.stringify({managed_diagnostics:true,render_trace:true,sdl_graphics_fixes:true,client_memory_compatibility:true,renderer:'turnip',resolution:'1280x720',presentation_mode:'native_surface',display_fps:60,audio:false,gump_space:true})));
+ await page.evaluate(()=>localStorage.setItem('launch',JSON.stringify({cold_trace:true,managed_diagnostics:true,render_trace:true,sdl_graphics_fixes:true,client_memory_compatibility:true,renderer:'turnip',resolution:'1280x720',presentation_mode:'native_surface',display_fps:60,audio:false,gump_space:true})));
  await page.reload();await page.locator('[data-tab="client"]').click();
  if(await page.locator('#client-options').evaluate(node=>node.open))throw Error('Client options must start collapsed');
  await page.locator('#client-options > summary').click();
- if(await page.locator('#render-trace').isChecked()||await page.locator('#managed-diagnostics').isChecked()||await page.locator('#sdl-graphics-fixes').isChecked())throw Error('Legacy runtime experiments must reset');
+ if(await page.locator('#cold-trace').isChecked()||await page.locator('#render-trace').isChecked()||await page.locator('#managed-diagnostics').isChecked()||await page.locator('#sdl-graphics-fixes').isChecked())throw Error('Legacy runtime experiments must reset');
  if(await page.locator('#fps').inputValue()!=='30')throw Error('Old transport-only 60 target must migrate to cooler default');
  if(await page.locator('#audio').isChecked()||await page.locator('#presentation').inputValue()!=='native_surface'||!await page.locator('#gump-space').isChecked())throw Error('Upgrade must preserve unrelated options');
  await page.locator('#resolution').selectOption('800x600');
@@ -77,7 +78,7 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  await page.locator('#client-options > summary').click();
  if(!await page.locator('#gump-space').isChecked())throw Error('Layout selection did not persist');
  await page.locator('[data-action="client_start"]').click();await page.waitForTimeout(50);
- if(!await page.evaluate(()=>window.calls.some(c=>c.op==='client_start'&&c.args.runtime_backend==='fex-arm64ec-1'&&c.args.managed_diagnostics===false&&c.args.render_trace===false&&c.args.sdl_graphics_fixes===false&&c.args.audio_driver==='wasapi'&&c.args.proot_acceleration===true&&c.args.music_cache===true&&c.args.frame_budget===true&&c.args.smooth_audio===true&&c.args.dirty_regions===true)))throw Error('Default options missing from native launch');
+ if(!await page.evaluate(()=>window.calls.some(c=>c.op==='client_start'&&c.args.runtime_backend==='fex-arm64ec-1'&&c.args.cold_trace===false&&c.args.managed_diagnostics===false&&c.args.render_trace===false&&c.args.sdl_graphics_fixes===false&&c.args.audio_driver==='wasapi'&&c.args.proot_acceleration===true&&c.args.music_cache===true&&c.args.frame_budget===true&&c.args.smooth_audio===true&&c.args.dirty_regions===true)))throw Error('Default options missing from native launch');
  await page.locator('#fps').selectOption('60');
  await page.locator('#audio-driver').selectOption('directsound');
  await page.locator('#client-acceleration').uncheck();
@@ -87,6 +88,7 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  await page.locator('#dirty-regions').uncheck();
  await page.locator('#render-trace').check();
  await page.locator('#managed-diagnostics').check();
+ await page.locator('#cold-trace').check();
  await page.locator('#sdl-graphics-fixes').uncheck();
  await page.reload();await page.locator('[data-tab="client"]').click();
  if(await page.locator('#client-options').evaluate(node=>node.open))throw Error('Client options must start collapsed');
@@ -94,9 +96,10 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  if(await page.locator('#sdl-graphics-fixes').isChecked())throw Error('Original graphics library choice did not persist');
  if(await page.locator('#fps').inputValue()!=='60')throw Error('Explicit 60 FPS choice must persist');
  if(await page.locator('#dirty-regions').isChecked())throw Error('Full-frame comparison choice did not persist');
+ if(!await page.locator('#cold-trace').isChecked())throw Error('Cold-load timing choice did not persist');
  if(!await page.locator('#render-trace').isChecked())throw Error('Render trace choice did not persist');
  await page.locator('[data-action="client_start"]').click();await page.waitForTimeout(50);
- if(!await page.evaluate(()=>window.calls.some(c=>c.op==='client_start'&&c.args.runtime_backend==='fex-arm64ec-1'&&c.args.managed_diagnostics===true&&c.args.render_trace===true&&c.args.sdl_graphics_fixes===false&&c.args.audio_driver==='directsound'&&c.args.proot_acceleration===false&&c.args.music_cache===false&&c.args.frame_budget===false&&c.args.smooth_audio===false&&c.args.dirty_regions===false)))throw Error('Selected options missing from native launch');
+ if(!await page.evaluate(()=>window.calls.some(c=>c.op==='client_start'&&c.args.runtime_backend==='fex-arm64ec-1'&&c.args.cold_trace===true&&c.args.managed_diagnostics===true&&c.args.render_trace===true&&c.args.sdl_graphics_fixes===false&&c.args.audio_driver==='directsound'&&c.args.proot_acceleration===false&&c.args.music_cache===false&&c.args.frame_budget===false&&c.args.smooth_audio===false&&c.args.dirty_regions===false)))throw Error('Selected options missing from native launch');
  if(!await page.evaluate(()=>JSON.parse(localStorage.getItem('launch')).gump_space))throw Error('Launch option missing');
  await page.screenshot({path:'ui-reports/client-landscape.png',fullPage:true});
  await page.setViewportSize({width:412,height:915});await page.screenshot({path:'ui-reports/client-phone.png',fullPage:true});

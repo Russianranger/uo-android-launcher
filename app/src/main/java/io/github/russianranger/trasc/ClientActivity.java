@@ -26,6 +26,7 @@ public final class ClientActivity extends Activity {
     private LinearLayout menu;
     private ImageButton gear;
     private boolean menuOpen, keyboardOpen, mappingsOpen;
+    private boolean coldTrace;
     private String displayError;
     private boolean failureShown;
     private int commandGeneration;
@@ -54,9 +55,9 @@ public final class ClientActivity extends Activity {
         FrameLayout layout=new FrameLayout(this);layout.setBackgroundColor(Color.BLACK);
         display=new ClientView();
         boolean regionsRequested=true;
-        try{JSONObject state=runtime.state(),launch=state.optJSONObject("launch");nativeActive=launch!=null&&launch.optString("presentation_active").equals("native_surface");if(launch!=null){presentationFallback=launch.optString("presentation_fallback","");regionsRequested=launch.optBoolean("dirty_regions_requested",true);}}catch(Exception ignored){}
+        try{JSONObject state=runtime.state(),launch=state.optJSONObject("launch");nativeActive=launch!=null&&launch.optString("presentation_active").equals("native_surface");if(launch!=null){presentationFallback=launch.optString("presentation_fallback","");regionsRequested=launch.optBoolean("dirty_regions_requested",true);JSONObject trace=launch.optJSONObject("cold_trace");coldTrace=trace!=null&&trace.optBoolean("active");}}catch(Exception ignored){}
         if(nativeActive){
-            nativeDisplay=new NativePresentation(this,runtime.frameSocket(),regionsRequested,new NativePresentation.Events(){
+            nativeDisplay=new NativePresentation(this,runtime.frameSocket(),regionsRequested,coldTrace,new NativePresentation.Events(){
                 public void failed(String reason){fallbackPresentation(reason);}
                 public void size(int width,int height){display.frameWidth=width;display.frameHeight=height;display.input.size(width,height);display.arrangeSurface();}
             });layout.addView(nativeDisplay,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));
@@ -70,6 +71,7 @@ public final class ClientActivity extends Activity {
         menu=new LinearLayout(this);menu.setOrientation(LinearLayout.VERTICAL);menu.setPadding(dp(12),dp(8),dp(12),dp(12));
         menu.setBackground(panelBackground(0xd010191c));menu.setOnClickListener(v->{});
         addMenuButton("Back to Launcher Menu",v->finish());
+        if(coldTrace)addMenuButton("Mark test phase",v->markTestPhase());
         addMenuButton("Keyboard",v->textDialog());
         addMenuButton("Controller mappings",v->controllerDialog());
         addMenuButton("Capture external mouse",v->{setMenuOpen(false);display.post(()->display.requestPointerCapture());});
@@ -142,6 +144,17 @@ public final class ClientActivity extends Activity {
         new ControllerDialog(this,controller,()->{mappingsOpen=false;controller.capture(gameInputActive());}).show();
     }
     private void cancelCommand(){commandGeneration++;commandPending=false;if(display!=null)display.input.releaseAll();}
+    private void markTestPhase(){
+        new AlertDialog.Builder(this).setTitle("Mark the next test phase").setItems(DiagnosticMarks.LABELS,(dialog,phase)->{
+            String utc=java.time.Instant.now().toString();long elapsed=SystemClock.elapsedRealtimeNanos();
+            try{
+                JSONObject launch=runtime.state().optJSONObject("launch");
+                if(!runtime.alive()||launch==null)throw new IOException("Client is no longer running");
+                DiagnosticMarks.write(runtime.server.work,phase,launch.getString("attempt_started_utc"),utc,elapsed);
+                setMenuOpen(false);Toast.makeText(this,"Marked: "+DiagnosticMarks.LABELS[phase],Toast.LENGTH_SHORT).show();
+            }catch(Exception e){Toast.makeText(this,"Could not record phase: "+e.getMessage(),Toast.LENGTH_LONG).show();}
+        }).setNegativeButton("Cancel",null).show();
+    }
     private void textDialog() {
         keyboardOpen=true;setMenuOpen(false);controller.capture(false);display.input.releaseAll();
         EditText text=new EditText(this);text.setSingleLine(true);text.setHint("Type into the focused client field");

@@ -45,7 +45,7 @@ namespace Memento
             internal readonly int[] gc = { GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2) };
         }
         static State Current => state ??= new State();
-        public static void Announce() => Write("FRAME_BUDGET_ACTIVE revision=2 budget_ms=5 packet_limit=1000 load_boundaries=true");
+        public static void Announce() { Write("FRAME_BUDGET_ACTIVE revision=2 budget_ms=5 packet_limit=1000 load_boundaries=true"); ColdTrace.Announce(); }
         // The parser supplies the actual queue origin. Plugin packets can be
         // dispatched inside a network scope, so scope depth cannot identify it.
         // Retain only the ID and timing, never packet bytes or a handler object.
@@ -57,6 +57,7 @@ namespace Memento
         {
             if (!scope.valid) return;
             var s = Current; long elapsed = Math.Max(0, Stopwatch.GetTimestamp() - scope.began);
+            ColdTrace.Packet(scope.id, scope.network, elapsed);
             s.packetCalls++;
             if (s.packetId < 0 || elapsed > s.packetMax) {
                 s.packetMax = elapsed; s.packetId = scope.id; s.packetNetwork = scope.network;
@@ -102,6 +103,7 @@ namespace Memento
         public static long Begin(int stage)
         {
             var s = Current; long now = Stopwatch.GetTimestamp();
+            ColdTrace.BeginStage(stage, now);
             if (stage == Draw) drawBegin?.Invoke();
             if (stage == Update) { if (s.lastUpdate != 0) s.updateGap = Math.Max(s.updateGap, now - s.lastUpdate); s.lastUpdate = now; }
             if (stage == Audio) { if (s.lastAudio != 0) s.audioGap = Math.Max(s.audioGap, now - s.lastAudio); s.lastAudio = now; }
@@ -113,6 +115,7 @@ namespace Memento
             // original Draw is unwinding an exception. Native boundaries flush.
             if (stage == Draw) drawEnd?.Invoke();
             var s = Current; long now = Stopwatch.GetTimestamp(), elapsed = Math.Max(0, now - began);
+            ColdTrace.EndStage(stage, elapsed);
             s.calls[stage]++; s.total[stage] += elapsed; s.max[stage] = Math.Max(s.max[stage], elapsed);
             if (stage != Update) return;
             if (s.nextReport == 0) { s.nextReport = now + 5 * Stopwatch.Frequency; return; }

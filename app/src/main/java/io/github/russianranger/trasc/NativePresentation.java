@@ -15,6 +15,9 @@ final class NativePresentation extends SurfaceView implements SurfaceHolder.Call
     private final File path;
     private final Events events;
     private final boolean regionsRequested;
+    private final boolean coldTrace;
+    private final File traceWork;
+    private boolean traceFailed;
     private volatile boolean regionsActive;
     private volatile LocalSocket socket;
     private volatile Thread worker;
@@ -22,8 +25,10 @@ final class NativePresentation extends SurfaceView implements SurfaceHolder.Call
     private volatile boolean closed;
     private long since=System.nanoTime(),frames,unchanged,readNs,captureNs,lockNs,copyNs,postNs,bytes,shmFrames,lastFrame;
     private long regionFrames,fullBytes,redrawnPixels,fullPixels,receiveCalls,expandedFrames,reconfigurations,wireBytes;
+    private long captureMax,receiveMax,lockMax,copyMax,postMax,slowReceive,slowSurface,traceSince;
+    private int traceRecords;
     private int width,height;
-    NativePresentation(Context context,File path,boolean regionsRequested,Events events){super(context);this.path=path;this.regionsRequested=regionsRequested;this.events=events;getHolder().addCallback(this);}
+    NativePresentation(Context context,File path,boolean regionsRequested,boolean coldTrace,Events events){super(context);this.path=path;this.regionsRequested=regionsRequested;this.coldTrace=coldTrace;this.traceWork=coldTrace?RuntimeManager.get(context).work:null;this.events=events;getHolder().addCallback(this);}
     private static native int capabilities(int fd);
     private static native int frame(Surface surface,int fd,ByteBuffer pixels,long[] measures,boolean regions);
     private LocalSocket connect()throws IOException {
@@ -63,6 +68,7 @@ final class NativePresentation extends SurfaceView implements SurfaceHolder.Call
                             int result=frame(surface,fd.getFd(),pixels,times,regionsActive);
                             if(result==1){synchronized(this){unchanged++;}continue;}
                             if(result!=0)throw new IOException("Native frame delivery failed ("+result+")");
+                            if(coldTrace)traceFrame(times);
                             synchronized(this){
                                 frames++;width=(int)times[0];height=(int)times[1];captureNs+=times[2];readNs+=times[3];lockNs+=times[4];copyNs+=times[5];postNs+=times[6];bytes+=times[7];
                                 shmFrames+=(times[8]&1)!=0?1:0;regionFrames+=(times[8]&4)!=0?1:0;
@@ -78,6 +84,18 @@ final class NativePresentation extends SurfaceView implements SurfaceHolder.Call
     private int reportedWidth,reportedHeight;
     private synchronized void stopWorker(){worker=null;LocalSocket local=socket;socket=null;if(local!=null)try{local.shutdownInput();local.shutdownOutput();local.close();}catch(IOException ignored){}}
     void close(){closed=true;stopWorker();}
+    private synchronized void traceFrame(long[] times){
+        captureMax=Math.max(captureMax,times[2]);receiveMax=Math.max(receiveMax,times[3]);lockMax=Math.max(lockMax,times[4]);copyMax=Math.max(copyMax,times[5]);postMax=Math.max(postMax,times[6]);
+        boolean slow=times[4]+times[5]+times[6]>=50000000L;
+        if(times[3]>=50000000L)slowReceive++;if(slow)slowSurface++;
+        long now=System.nanoTime();if(now-traceSince>=5000000000L){traceSince=now;traceRecords=0;}
+        if((slow||times[3]>=50000000L||times[2]>=50000000L)&&traceRecords++<8){
+            // Slow records alone reach the support log. Receive includes
+            // capture pacing and waiting for the client, not just bridge work.
+            if(!traceFailed)try{DiagnosticMarks.surface(traceWork,"SURFACE_FRAME utc="+java.time.Instant.now()+" capture_ms="+times[2]/1e6+" request_receive_ms="+times[3]/1e6+
+                " lock_ms="+times[4]/1e6+" copy_ms="+times[5]/1e6+" post_ms="+times[6]/1e6);}catch(IOException e){traceFailed=true;}
+        }
+    }
     synchronized JSONObject sample(long now)throws org.json.JSONException {
         double seconds=(now-since)/1e9;if(seconds<=0)return new JSONObject();
         JSONObject result=new JSONObject().put("window_seconds",seconds).put("surface_posts_per_second",frames/seconds)
@@ -90,7 +108,11 @@ final class NativePresentation extends SurfaceView implements SurfaceHolder.Call
             .put("delivered_pixel_fraction",fullBytes==0?0:(double)bytes/fullBytes).put("surface_redraw_fraction",fullPixels==0?0:(double)redrawnPixels/fullPixels)
             .put("surface_expanded_frames",expandedFrames).put("receive_calls_per_frame",frames==0?0:(double)receiveCalls/frames).put("wire_bytes_per_second",wireBytes/seconds).put("buffer_reconfigurations",reconfigurations)
             .put("last_update_age_seconds",lastFrame==0?-1:Math.max(0,now-lastFrame)/1e9);
+        if(coldTrace)result.put("capture_max_ms",captureMax/1e6).put("request_receive_max_ms",receiveMax/1e6)
+            .put("surface_lock_max_ms",lockMax/1e6).put("native_copy_max_ms",copyMax/1e6).put("surface_post_max_ms",postMax/1e6)
+            .put("receive_ge_50ms",slowReceive).put("surface_work_ge_50ms",slowSurface);
         since=now;frames=unchanged=readNs=captureNs=lockNs=copyNs=postNs=bytes=shmFrames=0;
-        regionFrames=fullBytes=redrawnPixels=fullPixels=receiveCalls=expandedFrames=reconfigurations=wireBytes=0;return result;
+        regionFrames=fullBytes=redrawnPixels=fullPixels=receiveCalls=expandedFrames=reconfigurations=wireBytes=0;
+        captureMax=receiveMax=lockMax=copyMax=postMax=slowReceive=slowSurface=0;return result;
     }
 }

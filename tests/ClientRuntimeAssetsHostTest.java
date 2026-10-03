@@ -11,7 +11,7 @@ import java.util.zip.*;
 public final class ClientRuntimeAssetsHostTest {
     static final String IMPORT_PROBE="import pathlib,sys,json,hashlib; "
         +"root=pathlib.Path(sys.argv[1]).resolve(); sys.path.insert(0,str(root)); "
-        +"import uo_client_runner,client_prefix,client_health,client_render_trace,client_music_cache,client_frame_budget,client_atlas_uploads,client_graphics,client_audio,client_presentation,uo_content,log_retention; "
+        +"import uo_client_runner,client_prefix,client_health,client_render_trace,client_music_cache,client_frame_budget,client_atlas_uploads,client_cold_trace,client_graphics,client_audio,client_presentation,uo_content,log_retention; "
         +"assert pathlib.Path(uo_client_runner.__file__).parent.resolve()==root; "
         +"assert client_graphics.digest(root/client_graphics.ASSET)==client_graphics.FIXED_SDL; "
         +"audio=json.loads((root/'audio-bundle.json').read_text()); "
@@ -20,6 +20,10 @@ public final class ClientRuntimeAssetsHostTest {
         +"presentation=json.loads((root/'presentation-bundle.json').read_text()); "
         +"assert presentation['metadata_cache']==1; "
         +"assert hashlib.sha256((root/'x11-frame-bridge').read_bytes()).hexdigest()==presentation['sha256']; "
+        +"trace=json.loads((root/'vulkan-trace-bundle.json').read_text()); "
+        +"layer=(root/'libmemento-vulkan-trace.so').read_bytes(); "
+        +"assert trace['format']==1 and trace['revision']==1 and hashlib.sha256(layer).hexdigest()==trace['sha256']; "
+        +"assert layer[:5]==b'\\x7fELF\\x02' and int.from_bytes(layer[18:20],'little')==183; "
         +"print('DEPLOYED_CLIENT_IMPORT_OK',flush=True)";
 
     static String probe(Path deployed,boolean expectSuccess)throws Exception {

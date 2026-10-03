@@ -1,5 +1,11 @@
 # UO Memento Mobile
 
+## Updating to 0.2.16
+
+This diagnostic build investigates the remaining cold first-visit pauses measured on Thor. **Client → Client options → Cold-load timing (Thor test)** adds bounded individual long-frame records, FNA/native Vulkan timing and **Mark test phase** in the touch menu. It defaults off. Enable it for one fresh outdoor/interior/re-entry/retrace session, then export the complete Journal ZIP before selecting the next optimization.
+
+Install **UO-Memento-Mobile-0.2.16.apk** over the working app, retaining data/runtime/client, the current 60 FPS and other settings. Keep Smooth world loading on and the older detailed/crash tracing off. See the [short Thor procedure](docs/UO-Memento-Mobile-0.2.16-Instructions.txt) and [record guide, reversibility and limits](docs/DIAGNOSTICS-0.2.16.md). This release makes no new performance optimization or claim that the stutters are fixed.
+
 ## Updating to 0.2.15
 
 The touch quick-menu return action now says **Back to Launcher Menu**; matching display-failure messages use the same destination. Install **UO-Memento-Mobile-0.2.15.apk** over your working app, retaining its data/runtime/client. This release contains the wording correction and [0.2.14 Thor telemetry analysis](docs/THOR-0.2.14-ANALYSIS.md); it introduces no new performance change. See the [short device check](docs/UO-Memento-Mobile-0.2.15-Instructions.txt).

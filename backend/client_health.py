@@ -87,7 +87,7 @@ def read_stat(path):
 
 
 class ClientHealth:
-    def __init__(self, pid, logs, proc=Path('/proc'), interval=10, render_progress=None):
+    def __init__(self, pid, logs, proc=Path('/proc'), interval=10, render_progress=None, detailed=False):
         self.pid = pid
         self.logs = Path(logs)
         self.proc = Path(proc)
@@ -97,6 +97,7 @@ class ClientHealth:
         self.root_start = None
         self.disabled = False
         self.render_progress = RenderProgress(render_progress) if render_progress else None
+        self.detailed = detailed
 
     def snapshot(self):
         processes, pending, seen, ticks = [], [self.pid], set(), {}
@@ -118,6 +119,13 @@ class ClientHealth:
                 key = (pid, stat['start_ticks'])
                 ticks[key] = stat['cpu_ticks']
                 record['cpu_delta_ticks'] = (stat['cpu_ticks']-self.previous[key]) if key in self.previous else None
+                if self.detailed:
+                    try:
+                        # Numeric counters only; no filenames, command lines or
+                        # process memory. Cached reads and physical I/O differ.
+                        counters = dict(line.split(':',1) for line in read_text(base/'io').splitlines())
+                        record['io'] = {k:int(counters[k]) for k in ('rchar','syscr','read_bytes','write_bytes') if k in counters}
+                    except (OSError,ValueError):record['io_unavailable'] = True
                 # Direct children cover Wine's loader child when present. This
                 # is intentionally a bounded subtree, not every app process.
                 try:
@@ -140,6 +148,11 @@ class ClientHealth:
                                 item['cpu_delta_ticks'] = state['cpu_ticks']-self.previous[key] if key in self.previous else None
                                 try:item['wait_channel'] = read_text(thread/'wchan',128).strip()
                                 except OSError:item['wait_channel'] = 'unavailable'
+                                if self.detailed:
+                                    try:
+                                        sched = read_text(thread/'schedstat',128).split()
+                                        item['scheduled_cpu_ns'],item['runqueue_wait_ns'],item['timeslices'] = map(int,sched[:3])
+                                    except (OSError,ValueError):item['schedstat_unavailable'] = True
                                 record['thread_samples'].append(item)
                             except (OSError, ValueError, IndexError):
                                 continue # A thread can exit during the sample.

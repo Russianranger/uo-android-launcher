@@ -37,3 +37,14 @@ for variant in original updated; do
   grep -qi 'Vulkan' "$probe/logs/$variant.log"
 done
 grep -q SDL=3004016 "$probe/logs/updated.log"
+# Observe the original native pair through Wine's Linux Vulkan loader. The
+# ordinary run above remains the baseline and uses no diagnostic layer.
+if [ -f runtime-work/vulkan-trace/layer/trace.json ]; then
+  VK_LAYER_PATH="$PWD/runtime-work/vulkan-trace/layer" VK_INSTANCE_LAYERS=VK_LAYER_MEMENTO_cold_trace \
+    timeout 120 "$wine" "$probe/original/probe.exe" > "$probe/logs/observed.log" 2>&1
+  grep -q FNA_VULKAN_LIFETIME_OK "$probe/logs/observed.log"
+  grep -q VULKAN_TRACE_ACTIVE "$probe/logs/observed.log"
+  for operation in vkAllocateMemory vkQueueSubmit vkQueuePresentKHR vkWaitForFences; do
+    grep -q "op=$operation " "$probe/logs/observed.log"
+  done
+fi

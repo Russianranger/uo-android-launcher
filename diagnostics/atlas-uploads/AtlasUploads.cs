@@ -90,7 +90,7 @@ public static class AtlasUploads
     internal static unsafe void UploadCore(object texture, int width, int height, bool color,
         int level, Rectangle? rectangle, IntPtr data, int byteCount, bool padding = false)
     {
-        var s = Current; s.logical++;
+        var s = Current; s.logical++; ColdTrace.Atlas(1, 0, 0, 0, 0, 0, 0);
         bool candidate = s.drawDepth > 0 && !s.flushing && color && level == 0 && rectangle.HasValue && data != IntPtr.Zero &&
             byteCount > 0 && byteCount <= MaxBatchBytes && Valid(rectangle.GetValueOrDefault(), width, height, byteCount);
         Rectangle sprite = rectangle.GetValueOrDefault(), staged = sprite; int stagedBytes = byteCount;
@@ -149,7 +149,7 @@ public static class AtlasUploads
             if (owned is not null) s.pool.Return(owned);
             DiscardPending(s); throw;
         }
-        finally { s.stageTicks += Math.Max(0, Stopwatch.GetTimestamp() - began); }
+        finally { long ticks = Math.Max(0, Stopwatch.GetTimestamp() - began); s.stageTicks += ticks; ColdTrace.Atlas(0, 0, 0, 0, ticks, 0, 0); }
     }
 
     static bool Valid(Rectangle r, int width, int height, int byteCount) => r.X >= 0 && r.Y >= 0 &&
@@ -191,7 +191,7 @@ public static class AtlasUploads
         if (!ReferenceEquals(original, output)) s.pool.Return(original);
         s.pool.Return(b.pixels!);
         a.pixels = output; a.rectangle = merged; a.bytes += b.bytes;
-        b = default; s.count--; s.merged++; return true;
+        b = default; s.count--; s.merged++; ColdTrace.Atlas(0, 0, 1, 0, 0, 0, 0); return true;
     }
 
     public static unsafe void Flush()
@@ -221,13 +221,14 @@ public static class AtlasUploads
         {
             DiscardPending(s); s.flushing = false;
             long elapsed = Math.Max(0, Stopwatch.GetTimestamp() - began);
+            ColdTrace.Atlas(0, 0, 0, 0, 0, elapsed, 1);
             s.flushTicks += elapsed; s.maxFlushTicks = Math.Max(s.maxFlushTicks, elapsed); MaybeReport(s);
         }
     }
 
     static void CallUpload(State s, object texture, int level, Rectangle? rectangle, IntPtr data, int byteCount)
     {
-        s.native++; s.upload(texture, level, rectangle, data, byteCount);
+        s.native++; ColdTrace.Atlas(0, 1, 0, byteCount, 0, 0, 0); s.upload(texture, level, rectangle, data, byteCount);
     }
     static void NativeUpload(object texture, int level, Rectangle? rectangle, IntPtr data, int byteCount)
         => ((Texture2D)texture).SetDataPointerEXT(level, rectangle, data, byteCount);

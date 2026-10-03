@@ -33,6 +33,23 @@ cp tests/run-fex-proot.sh "$probe/proot-probes.sh"
 cp backend/client_runtime.py "$probe/client_runtime.py"
 mkdir -p "$probe/backend"
 cp backend/*.py "$probe/backend/"
+mkdir -p "$probe/trace-layer"
+cp backend-assets/libmemento-vulkan-trace.so "$probe/trace-layer/"
+python3 - <<'PY'
+from pathlib import Path
+import json
+Path('runtime-work/fex/trace-layer/trace.json').write_text(json.dumps({'file_format_version':'1.0.0','layer':{'name':'VK_LAYER_MEMENTO_cold_trace','type':'GLOBAL','library_path':'/check/trace-layer/libmemento-vulkan-trace.so','api_version':'1.3.0','implementation_version':1,'description':'Memento passive timing'}}))
+PY
+# Exercise the actual managed diagnostic FNA under the retained Windows x64
+# translator, in addition to host ABI verification and the real native GPU run.
+bash scripts/check-atlas-uploads.sh --host-only > "$probe/logs/atlas-host.log" 2>&1
+bash scripts/check-cold-trace.sh --host-only > "$probe/logs/cold-host.log" 2>&1
+cp -a runtime-work/cold-trace/patched "$probe/cold-fixture"
+cp runtime-work/frame-budget/Memento.FrameBudget.dll "$probe/trace-layer/"
+x86_64-w64-mingw32-gcc -shared -O2 -Wall -Wextra -Werror tests/atlas-boundary-probe/native-shim.c -o "$probe/trace-layer/shim.dll"
+dotnet publish tests/graphics-boundary-probe/GraphicsBoundaryProbe.csproj -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=10.0.8 -o "$probe/cold-boundaries" --nologo
+dotnet publish tests/cold-trace-probe/ColdTraceProbe.csproj -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=10.0.8 -o "$probe/cold-frames" --nologo
+rm "$probe/cold-boundaries/Memento.FrameBudget.dll"
 cp native/pcm_trasc.c tests/check_wasapi_audio.py "$probe/"
 cp tests/prefix-wine-probe.py "$probe/prefix-wine-probe.py"
 curl -fLsS --retry 3 https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-devel-3.4.16-mingw.tar.gz -o "$probe/sdk.tar.gz"
@@ -67,6 +84,11 @@ timeout 150 /opt/wine/bin/wine /check/stress/FexProbe.exe >/check/logs/stress.lo
 grep -q FEX_DOTNET_STRESS_OK /check/logs/stress.log
 FNA3D_FORCE_DRIVER=Vulkan SDL_GPU_DRIVER=vulkan timeout 180 /opt/wine/bin/wine /check/graphics/probe.exe >/check/logs/graphics.log 2>&1
 grep -q FNA_VULKAN_LIFETIME_OK /check/logs/graphics.log
+MEMENTO_COLD_TRACE=1 DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/cold-boundaries/GraphicsBoundaryProbe.exe 'Z:\check\cold-fixture' 'Z:\check\trace-layer\shim.dll' >/check/logs/cold-boundaries.log 2>&1
+grep -q GRAPHICS_BOUNDARY_OK /check/logs/cold-boundaries.log
+grep -q COLD_TRACE_ACTIVE /check/logs/cold-boundaries.log
+timeout 120 /opt/wine/bin/wine /check/cold-frames/ColdTraceProbe.exe enabled >/check/logs/cold-frames.log 2>&1
+grep -q 'COLD_TRACE_OK mode=enabled' /check/logs/cold-frames.log
 # Build the app's pinned PRoot sources/patches against Linux libc for this test.
 # Android's Bionic build and device kernel still need device validation.
 apt-get update -qq >/check/logs/proot-install.log 2>&1

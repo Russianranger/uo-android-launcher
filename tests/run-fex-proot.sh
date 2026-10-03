@@ -15,6 +15,14 @@ WINEDEBUG=-all,err+all,trace+loaddll timeout 150 /opt/wine/bin/wine /check/stres
 grep -q FEX_DOTNET_STRESS_OK /check/logs/proot-stress.log
 FNA3D_FORCE_DRIVER=Vulkan SDL_GPU_DRIVER=vulkan timeout 180 /opt/wine/bin/wine /check/graphics/probe.exe >/check/logs/proot-graphics.log 2>&1
 grep -q FNA_VULKAN_LIFETIME_OK /check/logs/proot-graphics.log
+FNA3D_FORCE_DRIVER=Vulkan SDL_GPU_DRIVER=vulkan VK_LAYER_PATH=/check/trace-layer VK_INSTANCE_LAYERS=VK_LAYER_MEMENTO_cold_trace timeout 180 /opt/wine/bin/wine /check/graphics/probe.exe >/check/logs/proot-graphics-observed.log 2>&1
+grep -q FNA_VULKAN_LIFETIME_OK /check/logs/proot-graphics-observed.log
+grep -q VULKAN_TRACE_ACTIVE /check/logs/proot-graphics-observed.log
+for operation in vkAllocateMemory vkQueueSubmit vkQueuePresentKHR vkWaitForFences; do
+  grep -q "op=$operation " /check/logs/proot-graphics-observed.log
+done
+MEMENTO_COLD_TRACE=1 DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/cold-boundaries/GraphicsBoundaryProbe.exe 'Z:\check\cold-fixture' 'Z:\check\trace-layer\shim.dll' >/check/logs/proot-cold-boundaries.log 2>&1
+grep -q GRAPHICS_BOUNDARY_OK /check/logs/proot-cold-boundaries.log
 
 python3 /check/check_wasapi_audio.py >/check/logs/proot-wasapi.log 2>&1
 grep -q WINE_WASAPI_PCM_OK /check/logs/proot-wasapi.log

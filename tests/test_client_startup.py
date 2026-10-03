@@ -43,7 +43,7 @@ class StartupTests(unittest.TestCase):
                 self.assertEqual(report['runtime_backend'],'fex-arm64ec-1')
 
     def test_legacy_preferences_cannot_enable_fex_experiments(self):
-        request=dict(self.request,client_memory_compatibility=True,managed_diagnostics=True,
+        request=dict(self.request,cold_trace=True,client_memory_compatibility=True,managed_diagnostics=True,
                      render_trace=True,sdl_graphics_fixes=True)
         request.pop('runtime_backend')
         supervisor=runner.Supervisor(request)
@@ -51,6 +51,7 @@ class StartupTests(unittest.TestCase):
         supervisor.prepare_client_configuration()
         self.assertFalse(supervisor.status['render_trace']['active'])
         self.assertFalse(supervisor.request['sdl_graphics_fixes'])
+        self.assertFalse(supervisor.request['cold_trace'])
         self.assertNotIn('DOTNET_STARTUP_HOOKS',supervisor.client_environment())
 
     def test_render_trace_only_preloads_helper_for_a_verified_patch(self):
@@ -86,6 +87,19 @@ class StartupTests(unittest.TestCase):
         self.assertTrue(hooks[0].endswith('Memento.FrameBudget.dll'))
         self.assertTrue(hooks[1].endswith('Memento.RenderTrace.dll'))
         self.assertTrue(hooks[2].endswith('Memento.Diagnostics.dll'))
+
+    def test_cold_observers_are_exclusive_to_the_verified_game_environment(self):
+        with patch.dict(runner.os.environ,{'MEMENTO_COLD_TRACE':'1','VK_INSTANCE_LAYERS':runner.client_cold_trace.LAYER,'VK_LAYER_PATH':'/old/layer'}):
+            supervisor=runner.Supervisor(dict(self.request,cold_trace=True))
+        self.assertNotIn('MEMENTO_COLD_TRACE',supervisor.client_environment())
+        self.assertNotIn('VK_INSTANCE_LAYERS',supervisor.setup_environment())
+        supervisor.status['cold_trace']={'active':True,'layer_path':'/session/vulkan-trace'}
+        env=supervisor.client_environment()
+        self.assertEqual(env['MEMENTO_COLD_TRACE'],'1')
+        self.assertEqual(env['VK_INSTANCE_LAYERS'],runner.client_cold_trace.LAYER)
+        self.assertEqual(env['VK_LAYER_PATH'],'/session/vulkan-trace')
+        self.assertNotIn('MEMENTO_COLD_TRACE',supervisor.setup_environment())
+        with self.assertRaisesRegex(ValueError,'Invalid cold-load'):runner.Supervisor(dict(self.request,cold_trace='true'))
 
     def test_prefix_upgrade_repairs_once_and_failed_check_retries(self):
         marker=runner.PREFIX/'memento-prefix-ready';marker.touch() # v0.1.0 marker

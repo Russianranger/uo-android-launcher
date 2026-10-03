@@ -95,6 +95,7 @@ final class ClientRuntime {
             request.put("managed_diagnostics",fexOptions&&options.optBoolean("managed_diagnostics",false));
             request.put("render_trace",fexOptions&&options.optBoolean("render_trace",false));
             request.put("sdl_graphics_fixes",fexOptions&&options.optBoolean("sdl_graphics_fixes",false));
+            request.put("cold_trace",fexOptions&&options.optBoolean("cold_trace",false));
             if(mode.equals("client")){
                 JSONObject info=json(new File(client,"memento-client.json"));
                 if(!info.optBoolean("self_contained")&&!new File(dotnet,"dotnet.exe").isFile())throw new IOException("Prepare the required .NET runtime in the Client tab first");

@@ -14,6 +14,7 @@ import client_render_trace
 import client_music_cache
 import client_frame_budget
 import client_atlas_uploads
+import client_cold_trace
 import client_runtime
 import client_prefix
 from client_health import ClientHealth, prepare_render_progress
@@ -39,7 +40,7 @@ class Supervisor:
         request=dict(request)
         # Old APK launch preferences are not a valid FEX diagnostic opt-in.
         if request.get('runtime_backend') != RUNTIME_ID:
-            for key in ('managed_diagnostics','render_trace','sdl_graphics_fixes'):
+            for key in ('managed_diagnostics','render_trace','sdl_graphics_fixes','cold_trace'):
                 request[key]=False
         request['runtime_backend']=RUNTIME_ID
         self.request=request
@@ -73,6 +74,11 @@ class Supervisor:
         self.env.pop('MEMENTO_RENDER_TRACE',None)
         self.env.pop('MEMENTO_RENDER_PROGRESS',None)
         self.env.pop('MEMENTO_ATLAS_UPLOADS',None)
+        self.env.pop('MEMENTO_COLD_TRACE',None)
+        if client_cold_trace.LAYER in self.env.get('VK_INSTANCE_LAYERS','').split(':'):
+            self.env.pop('VK_INSTANCE_LAYERS',None)
+            self.env.pop('VK_LAYER_PATH',None)
+        if not isinstance(request.get('cold_trace',False),bool):raise ValueError('Invalid cold-load diagnostics option')
         audio_driver=request.get('audio_driver','wasapi')
         if audio_driver not in ('wasapi','directsound'):raise ValueError('Invalid audio driver')
         # SDL 3 uses AUDIO_DRIVER; SDL 2 and SDL 3's legacy alias use
@@ -200,6 +206,7 @@ class Supervisor:
         if not confined(CLIENT,info['executable']).is_file():
             raise ValueError('Imported client executable is missing')
         # Repair existing imports on APK upgrade, before opening the display.
+        client_cold_trace.restore(CLIENT,info)
         report=local_client_settings(CLIENT,info)
         graphics_fixes=self.request.get('sdl_graphics_fixes',False)
         if not isinstance(graphics_fixes,bool):raise ValueError('Invalid SDL graphics fixes option')
@@ -210,6 +217,9 @@ class Supervisor:
         report.update(client_frame_budget.prepare(CLIENT,info,self.root,
             self.request.get('frame_budget',True),self.request.get('render_trace',False)))
         report['music_cache']=client_music_cache.prepare(CLIENT,info,self.root,self.request.get('music_cache',True))
+        report['cold_trace']=client_cold_trace.prepare(CLIENT,info,self.root,SESSION,self.request.get('cold_trace',False),
+            report['atlas_uploads']['active'] and report['frame_budget']['active'] and self.request['renderer']=='turnip')
+        self.update(cold_trace=report['cold_trace'])
         self.update(sdl_graphics=report['sdl_graphics'],render_trace=report['render_trace'],music_cache=report['music_cache'],frame_budget=report['frame_budget'],atlas_uploads=report['atlas_uploads'])
         renderer_settings(CLIENT,info,self.request['renderer'])
         report['pacing']=frame_settings(CLIENT,info,self.request['display_fps'])
@@ -253,6 +263,10 @@ class Supervisor:
             # The atlas hook registers with the already loaded timing helper.
             env['DOTNET_STARTUP_HOOKS'] += ';' + atlas_hook
             env['MEMENTO_ATLAS_UPLOADS']='1'
+        if self.status.get('cold_trace',{}).get('active'):
+            env['MEMENTO_COLD_TRACE']='1'
+            env['VK_LAYER_PATH']=self.status['cold_trace']['layer_path']
+            env['VK_INSTANCE_LAYERS']=client_cold_trace.LAYER
         env['WINEDEBUG']='-all,err+all,trace+loaddll'
         write_json(LOGS/'client-compatibility.json',{
             'runtime_backend':RUNTIME_ID,
@@ -263,6 +277,7 @@ class Supervisor:
             'render_trace':self.status.get('render_trace',{}),
             'frame_budget':self.status.get('frame_budget',{}),
             'atlas_uploads':self.status.get('atlas_uploads',{}),
+            'cold_trace':self.status.get('cold_trace',{}),
             'attempt_started_utc':self.status['attempt_started_utc'],
             'environment':{key:env[key] for key in ('WINEDEBUG','WINEDLLOVERRIDES','WINEARCH','SDL_AUDIO_DRIVER','SDL_AUDIODRIVER')},
             'proot_acceleration_requested':self.status['proot_acceleration_requested'],
@@ -277,7 +292,7 @@ class Supervisor:
         # If Wine setup fails, an earlier gameplay crash must not appear as this
         # attempt's current output. Preserve it in the normal bounded history.
         from log_retention import rotate
-        for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json','client-health.log'):
+        for name in ('client-wine.log','client-managed.log','client-dotnet-host.log','client-compatibility.json','client-health.log','client-test-markers.log','client-surface-trace.log'):
             path=LOGS/name
             rotate(path)
             path.unlink(missing_ok=True)
@@ -335,7 +350,8 @@ class Supervisor:
             cwd=exe.parent
         env=self.client_environment() if request['mode']=='client' else self.env
         game=self.spawn(launch,'client-wine.log',cwd=cwd,env=env)
-        health=ClientHealth(game.pid,LOGS,render_progress=SESSION/'render-progress.bin'
+        health=ClientHealth(game.pid,LOGS,interval=2 if self.status.get('cold_trace',{}).get('active') else 10,
+            detailed=self.status.get('cold_trace',{}).get('active',False),render_progress=SESSION/'render-progress.bin'
                            if env.get('MEMENTO_RENDER_PROGRESS') else None)
         started=time.monotonic()
         self.update('client_running' if request['mode']=='client' else 'wine_desktop',renderer_requested=request['renderer'],

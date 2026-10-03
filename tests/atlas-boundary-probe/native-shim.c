@@ -54,3 +54,6 @@ EXPORT void FNA3D_GetIndexBufferData(void*d,void*b,int o,void*p,int n){REC(20,V(
 #endif
 EXPORT void FNA3D_SetVertexBufferData(void*d,void*b,int o,void*p,int n,int s,int z,int q){REC(21,V(d),V(b),o,V(p),n,s,z,q);}
 EXPORT void FNA3D_SetIndexBufferData(void*d,void*b,int o,void*p,int n,int q){REC(22,V(d),V(b),o,V(p),n,q);}
+EXPORT void *FNA3D_CreateTexture2D(void*d,int f,int w,int h,int l,uint8_t t){REC(23,V(d),f,w,h,l,t);return (void *)(uintptr_t)0x87654321;}
+EXPORT void FNA3D_CreateEffect(void*d,uint8_t*p,int n,void**effect,void**data){REC(24,V(d),p[0],p[n-1],n);*effect=(void *)(uintptr_t)0x12345678;*data=(void *)(uintptr_t)0xabcdef12;}
+EXPORT void FNA3D_CloneEffect(void*d,void*old,void**effect,void**data){REC(25,V(d),V(old));*effect=(void *)(uintptr_t)0x12345679;*data=(void *)(uintptr_t)0xabcdef13;}
