@@ -24,14 +24,13 @@ static const char *names[] = {
 #undef CALL
 };
 struct instance {
-    void *key;
     VkInstance handle;
     PFN_vkGetInstanceProcAddr next;
     PFN_GetPhysicalDeviceProcAddr physical;
     struct instance *link;
 };
 struct device {
-    void *key;
+    VkDevice handle;
     PFN_vkGetDeviceProcAddr next;
     PFN_vkDestroyDevice destroy;
 #define CALL(name, declaration, arguments, handle) PFN_vk##name name;
@@ -75,15 +74,25 @@ static void observed(int operation,uint64_t start,uint64_t cpu,VkResult result){
     if(end-stats.since>=5000000000ull)report(end);
 }
 static void *dispatch_key(const void *handle){return *(void *const *)handle;}
-static struct instance *instance_for(const void *handle){
+static struct instance *instance_for(VkInstance handle){
+    /* The loader can finish setting an instance's dispatch pointer after our
+     * CreateInstance returns. Instance calls already supply the stable handle;
+     * do not identify that lifetime by its mutable dispatch-table pointer. */
+    pthread_mutex_lock(&registry);
+    struct instance *item=instances;while(item&&item->handle!=handle)item=item->link;
+    pthread_mutex_unlock(&registry);return item;
+}
+static struct instance *physical_instance(VkPhysicalDevice handle){
     void *key=dispatch_key(handle);pthread_mutex_lock(&registry);
-    struct instance *item=instances;while(item&&item->key!=key)item=item->link;
+    struct instance *item=instances;
+    while(item&&dispatch_key(item->handle)!=key)item=item->link;
     pthread_mutex_unlock(&registry);return item;
 }
 static struct device *device_for(const void *handle){
     void *key=dispatch_key(handle);unsigned long current=atomic_load_explicit(&generation,memory_order_acquire);
     if(cached_device&&cached_key==key&&cached_generation==current)return cached_device;
-    pthread_mutex_lock(&registry);struct device *item=devices;while(item&&item->key!=key)item=item->link;
+    pthread_mutex_lock(&registry);struct device *item=devices;
+    while(item&&item->handle!=(VkDevice)handle&&dispatch_key(item->handle)!=key)item=item->link;
     cached_device=item;cached_key=key;cached_generation=current;pthread_mutex_unlock(&registry);return item;
 }
 #define CALL(name, declaration, arguments, handle) \
@@ -107,7 +116,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL trace_CreateInstance(const VkInstanceCreat
     PFN_vkCreateInstance create=(PFN_vkCreateInstance)item->next(VK_NULL_HANDLE,"vkCreateInstance");
     chain->u.pLayerInfo=chain->u.pLayerInfo->pNext;
     VkResult result=create(info,allocator,out);if(result!=VK_SUCCESS){free(item);return result;}
-    item->key=dispatch_key(*out);item->handle=*out;
+    item->handle=*out;
     pthread_mutex_lock(&registry);item->link=instances;instances=item;pthread_mutex_unlock(&registry);
     char timestamp[40];utc(timestamp,sizeof(timestamp));
     fprintf(stderr,"VULKAN_TRACE_ACTIVE utc=%s revision=1 pid=%ld tid=%ld long_call_ms=50 max_slow_records_per_thread_5s=8 passive=true\n",timestamp,(long)getpid(),(long)syscall(SYS_gettid));
@@ -120,7 +129,7 @@ static VKAPI_ATTR void VKAPI_CALL trace_DestroyInstance(VkInstance instance,cons
     pthread_mutex_unlock(&registry);free(item);
 }
 static VKAPI_ATTR VkResult VKAPI_CALL trace_CreateDevice(VkPhysicalDevice physical,const VkDeviceCreateInfo *info,const VkAllocationCallbacks *allocator,VkDevice *out){
-    struct instance *instance=instance_for(physical);
+    struct instance *instance=physical_instance(physical);
     VkLayerDeviceCreateInfo *chain=(VkLayerDeviceCreateInfo *)info->pNext;
     while(chain&&(chain->sType!=VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO||chain->function!=VK_LAYER_LINK_INFO))chain=(VkLayerDeviceCreateInfo *)chain->pNext;
     if(!chain)return VK_ERROR_INITIALIZATION_FAILED;
@@ -129,7 +138,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL trace_CreateDevice(VkPhysicalDevice physic
     PFN_vkCreateDevice create=(PFN_vkCreateDevice)chain->u.pLayerInfo->pfnNextGetInstanceProcAddr(instance->handle,"vkCreateDevice");
     chain->u.pLayerInfo=chain->u.pLayerInfo->pNext;
     VkResult result=create(physical,info,allocator,out);if(result!=VK_SUCCESS){free(item);return result;}
-    item->key=dispatch_key(*out);item->destroy=(PFN_vkDestroyDevice)item->next(*out,"vkDestroyDevice");
+    item->handle=*out;item->destroy=(PFN_vkDestroyDevice)item->next(*out,"vkDestroyDevice");
 #define CALL(name, declaration, arguments, handle) item->name=(PFN_vk##name)item->next(*out,"vk" #name);
 #include "commands.h"
 #undef CALL

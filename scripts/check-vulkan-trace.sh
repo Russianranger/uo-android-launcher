@@ -3,6 +3,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 work="$PWD/runtime-work/vulkan-trace"
 mkdir -p "$work/logs" "$work/layer"
+cc -std=c11 -O2 -Wall -Wextra -Werror tests/vulkan-layer-lifetime-probe.c -pthread -o "$work/lifetime-probe"
+"$work/lifetime-probe" > "$work/logs/late-dispatch.log" 2>&1
+grep -q VULKAN_LAYER_LIFETIME_OK "$work/logs/late-dispatch.log"
 cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror -Wl,-Bsymbolic native/graphics-diagnostics/layer.c -pthread -o "$work/layer/libmemento-vulkan-trace.so"
 python3 - "$work" <<'PY'
 from pathlib import Path
