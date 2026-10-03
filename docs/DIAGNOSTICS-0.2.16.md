@@ -4,6 +4,8 @@ The [0.2.14 Thor export](THOR-0.2.14-ANALYSIS.md) still contains EndDraw maxima 
 
 ## Activation and reversibility
 
+Keep **Use SDL 3.4.16 (optional)** OFF for Thor testing. The [failed optional-SDL device comparison](THOR-0.2.16-SDL-FAILURE.md) was followed by an Android low-memory kill; it does not establish a specific SDL defect or memory leak. Continue with the original SDL 3.2.27 library. Turning the optional update off takes effect on the next fresh client launch, using the verified original backup.
+
 **Cold-load timing (Thor test)** defaults off and requires the hash-verified TazUO 5.2 client, Turnip and the existing Smooth world loading/atlas pair. The launcher enables extra observations only in the game environment, after configuration checks. Prefix setup and .NET preflight do not inherit them. Unknown imported libraries remain unchanged.
 
 The diagnostic FNA delta is based on the existing 0.2.14 atlas FNA (`d295aab6…`). It retains the existing flush boundaries and adds timing/finally around 43 FNA3D overloads: draw, upload/readback, presentation, resource/effect creation and selected binding operations. Every native call executes once with its original arguments, return/out values, import ABI and marshalling. No additional flush or synchronization is inserted. All 6,782 unrelated methods, 4,047 metadata constants, resources and existing atlas native imports are preserved by structural verification. Seventeen additional private native clones preserve the original imports for newly observed resource calls.

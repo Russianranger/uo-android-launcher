@@ -6,6 +6,8 @@ This diagnostic build investigates the remaining cold first-visit pauses measure
 
 Install **UO-Memento-Mobile-0.2.16.apk** over the working app, retaining data/runtime/client, the current 60 FPS and other settings. Keep Smooth world loading on and the older detailed/crash tracing off. See the [short Thor procedure](docs/UO-Memento-Mobile-0.2.16-Instructions.txt) and [record guide, reversibility and limits](docs/DIAGNOSTICS-0.2.16.md). This release makes no new performance optimization or claim that the stutters are fixed.
 
+Keep **Use SDL 3.4.16 (optional)** OFF on Thor. The device comparison ended in an Android low-memory termination; the earlier recommendation to enable it is withdrawn. Turning it off and starting a fresh client restores the verified original library from its retained backup. See the [failure evidence and recovery procedure](docs/THOR-0.2.16-SDL-FAILURE.md).
+
 ## Updating to 0.2.15
 
 The touch quick-menu return action now says **Back to Launcher Menu**; matching display-failure messages use the same destination. Install **UO-Memento-Mobile-0.2.15.apk** over your working app, retaining its data/runtime/client. This release contains the wording correction and [0.2.14 Thor telemetry analysis](docs/THOR-0.2.14-ANALYSIS.md); it introduces no new performance change. See the [short device check](docs/UO-Memento-Mobile-0.2.15-Instructions.txt).

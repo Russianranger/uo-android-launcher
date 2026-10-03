@@ -1,5 +1,7 @@
 UO Memento Mobile 0.2.16 — Cold first-visit diagnostic build
 
+Thor update, October 3: keep "Use SDL 3.4.16 (optional)" OFF. That device comparison ended in an Android low-memory kill. If enabled, turn it OFF and fully relaunch the client to restore the original SDL from its verified backup. Confirm normal operation before another traversal test. No APK reinstall, runtime reset or client reimport is required for normal rollback.
+
 1. Log out, save and close your current session. Install UO-Memento-Mobile-0.2.16.apk over the working app; keep app data, the installed runtime and imported client.
 
 2. In Client → Client options, enable "Cold-load timing (Thor test)". Keep your existing 60 FPS, Turnip, Native Surface, Send changed regions, 1280×720 / 1098×720 world, audio and controller settings. Keep Smooth world loading ON, music caching ON, Render crash tracing OFF, Detailed client diagnostics OFF and optional SDL update OFF. The new diagnostic option is independent of those older tracing options. Relaunch the client to activate it.
