@@ -6,7 +6,7 @@
 struct handle {void *dispatch;};
 static int old_instance_table[2],instance_table[2],old_device_table,device_table;
 static struct handle fake_instances[2],fake_physical,fake_device,fake_queue,fake_commands;
-static int instance_creates,instance_destroys,device_destroys,buffer_calls,queue_calls,command_calls;
+static int instance_creates,instance_destroys,instance_destroy_queries,device_destroys,buffer_calls,queue_calls,command_calls;
 static VkInstance expected_instance;
 static VKAPI_ATTR VkResult VKAPI_CALL create_instance(const VkInstanceCreateInfo *info,const VkAllocationCallbacks *allocator,VkInstance *out){
     (void)info;assert(!allocator);assert(instance_creates<2);
@@ -32,7 +32,14 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL device_proc(VkDevice device,cons
 }
 static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL instance_proc(VkInstance instance,const char *name){
     if(!strcmp(name,"vkCreateInstance"))return (PFN_vkVoidFunction)create_instance;
-    if(!strcmp(name,"vkDestroyInstance"))return (PFN_vkVoidFunction)destroy_instance;
+    if(!strcmp(name,"vkDestroyInstance")){
+        /* The next lifetime callback must be captured before final dispatch.
+         * Late lookup on the retained loader can choose the wrong terminator. */
+        int i=instance==(VkInstance)&fake_instances[0]?0:1;
+        assert(instance==(VkInstance)&fake_instances[i]);
+        assert(fake_instances[i].dispatch==&old_instance_table[i]);
+        instance_destroy_queries++;return (PFN_vkVoidFunction)destroy_instance;
+    }
     if(!strcmp(name,"vkCreateDevice")){assert(instance==expected_instance);return (PFN_vkVoidFunction)create_device;}
     return NULL;
 }
@@ -57,7 +64,9 @@ int main(void){
     assert(trace_EndCommandBuffer((VkCommandBuffer)&fake_commands)==VK_SUCCESS);
     assert(!trace_GetDeviceProcAddr(device,"vkMissingFunction"));trace_DestroyDevice(device,NULL);
     expected_instance=(VkInstance)&fake_instances[0];trace_DestroyInstance(expected_instance,NULL);
-    expected_instance=(VkInstance)&fake_instances[1];trace_DestroyInstance(expected_instance,NULL);
-    assert(instance_destroys==2&&device_destroys==1&&buffer_calls==1&&queue_calls==1&&command_calls==1&&!instances&&!devices);
-    puts("VULKAN_LAYER_LIFETIME_OK late_dispatch=true instances=2 physical_queue_command=true calls_once=true");return 0;
+    /* Loader aliases can share the finalized instance dispatch table. */
+    struct handle alias={.dispatch=&instance_table[1]};expected_instance=(VkInstance)&alias;
+    trace_DestroyInstance(expected_instance,NULL);
+    assert(instance_destroys==2&&instance_destroy_queries==2&&device_destroys==1&&buffer_calls==1&&queue_calls==1&&command_calls==1&&!instances&&!devices);
+    puts("VULKAN_LAYER_LIFETIME_OK late_dispatch=true cached_destroy=true instances=2 physical_queue_command=true calls_once=true");return 0;
 }

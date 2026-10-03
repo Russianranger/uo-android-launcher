@@ -242,8 +242,10 @@ jobs:
       - name: Check whether recovery signing has an existing anchor
         id: anchor
         if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          status=$(curl -sS --retry 3 -o runtime-work/recovery-release.json -w '%{http_code}' https://api.github.com/repos/Russianranger/uo-android-launcher/releases/tags/v0.1.1)
+          status=$(curl -sS --retry 3 -H "Authorization: Bearer $GH_TOKEN" -o runtime-work/recovery-release.json -w '%{http_code}' https://api.github.com/repos/Russianranger/uo-android-launcher/releases/tags/v0.1.1)
           case "$status" in
             200) echo 'exists=true' >> "$GITHUB_OUTPUT" ;;
             404) echo 'exists=false' >> "$GITHUB_OUTPUT" ;;

@@ -26,6 +26,7 @@ static const char *names[] = {
 struct instance {
     VkInstance handle;
     PFN_vkGetInstanceProcAddr next;
+    PFN_vkDestroyInstance destroy;
     PFN_GetPhysicalDeviceProcAddr physical;
     struct instance *link;
 };
@@ -41,6 +42,7 @@ struct device {
 static pthread_mutex_t registry = PTHREAD_MUTEX_INITIALIZER;
 static struct instance *instances;
 static struct device *devices;
+static int lifetime_debug;
 static atomic_ulong generation;
 static _Thread_local struct device *cached_device;
 static _Thread_local void *cached_key;
@@ -75,11 +77,11 @@ static void observed(int operation,uint64_t start,uint64_t cpu,VkResult result){
 }
 static void *dispatch_key(const void *handle){return *(void *const *)handle;}
 static struct instance *instance_for(VkInstance handle){
-    /* The loader can finish setting an instance's dispatch pointer after our
-     * CreateInstance returns. Instance calls already supply the stable handle;
-     * do not identify that lifetime by its mutable dispatch-table pointer. */
+    /* The loader can finish setting dispatch pointers after CreateInstance.
+     * Prefer the stable handle; allow loader aliases using the current table. */
     pthread_mutex_lock(&registry);
-    struct instance *item=instances;while(item&&item->handle!=handle)item=item->link;
+    void *key=dispatch_key(handle);
+    struct instance *item=instances;while(item&&item->handle!=handle&&dispatch_key(item->handle)!=key)item=item->link;
     pthread_mutex_unlock(&registry);return item;
 }
 static struct instance *physical_instance(VkPhysicalDevice handle){
@@ -117,14 +119,25 @@ static VKAPI_ATTR VkResult VKAPI_CALL trace_CreateInstance(const VkInstanceCreat
     chain->u.pLayerInfo=chain->u.pLayerInfo->pNext;
     VkResult result=create(info,allocator,out);if(result!=VK_SUCCESS){free(item);return result;}
     item->handle=*out;
+    /* Cache the next lifetime callback before the loader finalizes dispatch.
+     * Resolving it again during destruction can select a different terminator
+     * on the retained 1.3.239 loader used by Wine/FEX. */
+    item->destroy=(PFN_vkDestroyInstance)item->next(*out,"vkDestroyInstance");
+    lifetime_debug=getenv("MEMENTO_VULKAN_LIFETIME_DEBUG")!=NULL;
+    if(lifetime_debug)fprintf(stderr,"VULKAN_LIFETIME create instance=%p dispatch=%p next=%p\n",(void *)*out,dispatch_key(*out),(void *)item->next);
     pthread_mutex_lock(&registry);item->link=instances;instances=item;pthread_mutex_unlock(&registry);
     char timestamp[40];utc(timestamp,sizeof(timestamp));
     fprintf(stderr,"VULKAN_TRACE_ACTIVE utc=%s revision=1 pid=%ld tid=%ld long_call_ms=50 max_slow_records_per_thread_5s=8 passive=true\n",timestamp,(long)getpid(),(long)syscall(SYS_gettid));
     return result;
 }
 static VKAPI_ATTR void VKAPI_CALL trace_DestroyInstance(VkInstance instance,const VkAllocationCallbacks *allocator){
-    struct instance *item=instance_for(instance);PFN_vkDestroyInstance destroy=(PFN_vkDestroyInstance)item->next(instance,"vkDestroyInstance");
-    destroy(instance,allocator);pthread_mutex_lock(&registry);
+    struct instance *item=instance_for(instance);
+    if(lifetime_debug)fprintf(stderr,"VULKAN_LIFETIME destroy instance=%p dispatch=%p record=%p\n",(void *)instance,dispatch_key(instance),(void *)item);
+    PFN_vkDestroyInstance destroy=item->destroy;
+    if(lifetime_debug)fprintf(stderr,"VULKAN_LIFETIME forward_destroy function=%p\n",(void *)destroy);
+    destroy(instance,allocator);
+    if(lifetime_debug)fprintf(stderr,"VULKAN_LIFETIME destroy_returned\n");
+    pthread_mutex_lock(&registry);
     struct instance **link=&instances;while(*link!=item)link=&(*link)->link;*link=item->link;
     pthread_mutex_unlock(&registry);free(item);
 }

@@ -84,7 +84,7 @@ timeout 150 /opt/wine/bin/wine /check/stress/FexProbe.exe >/check/logs/stress.lo
 grep -q FEX_DOTNET_STRESS_OK /check/logs/stress.log
 FNA3D_FORCE_DRIVER=Vulkan SDL_GPU_DRIVER=vulkan timeout 180 /opt/wine/bin/wine /check/graphics/probe.exe >/check/logs/graphics.log 2>&1
 grep -q FNA_VULKAN_LIFETIME_OK /check/logs/graphics.log
-FNA3D_FORCE_DRIVER=Vulkan SDL_GPU_DRIVER=vulkan VK_LAYER_PATH=/check/trace-layer VK_INSTANCE_LAYERS=VK_LAYER_MEMENTO_cold_trace timeout 180 /opt/wine/bin/wine /check/graphics/probe.exe >/check/logs/graphics-observed.log 2>&1
+MEMENTO_VULKAN_LIFETIME_DEBUG=1 FNA3D_FORCE_DRIVER=Vulkan SDL_GPU_DRIVER=vulkan VK_LAYER_PATH=/check/trace-layer VK_INSTANCE_LAYERS=VK_LAYER_MEMENTO_cold_trace timeout 180 /opt/wine/bin/wine /check/graphics/probe.exe >/check/logs/graphics-observed.log 2>&1
 grep -q FNA_VULKAN_LIFETIME_OK /check/logs/graphics-observed.log
 grep -q VULKAN_TRACE_ACTIVE /check/logs/graphics-observed.log
 MEMENTO_COLD_TRACE=1 DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/cold-boundaries/GraphicsBoundaryProbe.exe 'Z:\check\cold-fixture' 'Z:\check\trace-layer\shim.dll' >/check/logs/cold-boundaries.log 2>&1
