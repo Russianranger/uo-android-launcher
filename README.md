@@ -1,5 +1,11 @@
 # UO Memento Mobile
 
+## Updating to 0.2.17
+
+This diagnostic pass follows the measured native fence/submission stalls and the remaining long Draw time. **Cold-load timing (Thor test)** adds resource/loading/lock observations and bounded Vulkan fence, submission and command/resource correlation. It retains the existing frame, packet, atlas, GC/CPU and Android presentation records. Enable it for a fresh marked outdoor/interior/retrace test, then export the complete Journal ZIP.
+
+The diagnostic session uses **original SDL 3.2.27**, including restoration from the verified backup if the optional update preference was left on. Keep **Use SDL 3.4.16 (optional)** OFF on Thor. Install **UO-Memento-Mobile-0.2.17.apk** over the working app with data/runtime/client retained; keep current Turnip, Native Surface, changed regions, Smooth world loading, music caching, 60 FPS, layout, audio and controller choices. See the [short procedure](docs/UO-Memento-Mobile-0.2.17-Instructions.txt) and [record guide and limits](docs/DIAGNOSTICS-0.2.17.md). This pass adds diagnostics; the logs still determine the next performance change.
+
 ## Updating to 0.2.16
 
 This diagnostic build investigates the remaining cold first-visit pauses measured on Thor. **Client → Client options → Cold-load timing (Thor test)** adds bounded individual long-frame records, FNA/native Vulkan timing and **Mark test phase** in the touch menu. It defaults off. Enable it for one fresh outdoor/interior/re-entry/retrace session, then export the complete Journal ZIP before selecting the next optimization.

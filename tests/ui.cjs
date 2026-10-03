@@ -60,6 +60,8 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  if(await page.locator('#sdl-graphics-fixes').isChecked())throw Error('FEX must start with original graphics libraries');
  await page.evaluate(async()=>{window.graphicsReport={active_version:'3.4.16',action:'updated_known_tazuo_5.2_pair'};await refresh();});
  await page.waitForFunction(()=>document.getElementById('sdl-graphics-status').textContent.includes('3.4.16 active'));
+ await page.evaluate(async()=>{window.graphicsReport={active_version:'3.2.27 (TazUO 5.2)',action:'restored_original',original_for_diagnostics:true};await refresh();});
+ await page.waitForFunction(()=>document.getElementById('sdl-graphics-status').textContent.includes('original graphics library for cold-load timing'));
  await page.evaluate(async()=>{window.graphicsReport={active_version:'unrecognized',action:'unchanged_unrecognized_libraries'};await refresh();});
  await page.waitForFunction(()=>document.getElementById('sdl-graphics-status').textContent.includes('left as imported'));
  await page.evaluate(()=>localStorage.setItem('launch',JSON.stringify({cold_trace:true,managed_diagnostics:true,render_trace:true,sdl_graphics_fixes:true,client_memory_compatibility:true,renderer:'turnip',resolution:'1280x720',presentation_mode:'native_surface',display_fps:60,audio:false,gump_space:true})));

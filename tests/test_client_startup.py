@@ -73,6 +73,20 @@ class StartupTests(unittest.TestCase):
         self.assertNotIn('MEMENTO_RENDER_PROGRESS',failed_observer)
         self.assertEqual(failed_observer['MEMENTO_RENDER_TRACE'],'1')
 
+    def test_cold_launch_restores_sdl_before_game_configuration_despite_old_preference(self):
+        import hashlib
+        original=b'original SDL';updated=b'updated SDL'
+        (runner.CLIENT/'SDL3.dll').write_bytes(updated)
+        (runner.CLIENT/runner.client_graphics.BACKUP).write_bytes(original)
+        request=dict(self.request,renderer='turnip',cold_trace=True,sdl_graphics_fixes=True)
+        with patch.object(runner.client_graphics,'ORIGINAL_SDL',hashlib.sha256(original).hexdigest()), \
+             patch.object(runner.client_graphics,'FIXED_SDL',hashlib.sha256(updated).hexdigest()):
+            supervisor=runner.Supervisor(request)
+            supervisor.prepare_client_configuration()
+        self.assertEqual((runner.CLIENT/'SDL3.dll').read_bytes(),original)
+        self.assertTrue(supervisor.status['sdl_graphics']['original_for_diagnostics'])
+        self.assertEqual(supervisor.status['sdl_graphics']['action'],'restored_original')
+
     def test_frame_budget_hook_composes_only_in_client_environment(self):
         supervisor=runner.Supervisor(self.request);supervisor.root=runner.SESSION
         supervisor.status['frame_budget']={'active':True}

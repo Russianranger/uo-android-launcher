@@ -13,6 +13,11 @@ public static class ColdTrace
     internal static readonly string[] Stages = { "update", "network", "scene", "load", "audio", "fill", "draw", "enddraw", "music" };
     internal static readonly int[] Thresholds = { 25, 50, 100, 250, 1000 };
     [ThreadStatic] static State state;
+    [ThreadStatic] static int stageDepth;
+    [ThreadStatic] static int[] stageStack;
+    internal static long ActiveFrame => state?.frame ?? 0;
+    internal static long FrameStarted => state?.began ?? 0;
+    internal static int ActiveStage => stageDepth == 0 || stageDepth > stageStack.Length ? -1 : stageStack[stageDepth - 1];
     sealed class State
     {
         internal long frame, began, nextReport, allocated, cpu, endDrawCpuStart, endDrawCpu, frames, gapMax, bookkeeping;
@@ -30,7 +35,7 @@ public static class ColdTrace
     static State Current => state ??= new State();
     public static void Announce()
     {
-        if (Enabled) Write("COLD_TRACE_ACTIVE revision=1 long_frame_ms=50 max_long_records_per_5s=8 max_native_records_per_5s=8 frame_boundary=update_start cpu_scope=thread gc_pause_scope=process");
+        if (Enabled) Write("COLD_TRACE_ACTIVE revision=2 long_frame_ms=50 max_long_records_per_5s=8 max_native_records_per_5s=8 max_resource_records_per_5s=8 resource_windows=deferred_until_next_root_scope resource_cpu_scope=outermost_thread resource_self_excludes=instrumented_resource_children frame_boundary=update_start cpu_scope=thread gc_pause_scope=process");
     }
     internal static void BeginStage(int stage, long now)
     {
@@ -61,13 +66,18 @@ public static class ColdTrace
             s.packetId = s.nativeId = -1; s.packetNetwork = false;
             s.atlasSprites = s.atlasUploads = s.atlasMerged = s.atlasStage = s.atlasFlush = s.atlasFlushCalls = s.atlasBytes = 0;
             s.bookkeeping = Math.Max(0, Stopwatch.GetTimestamp() - now);
+            ResourceTrace.NewFrame();
         }
         if (stage == FrameBudget.EndDraw) s.endDrawCpuStart = ThreadCpu();
+        stageStack ??= new int[16];
+        if (stageDepth < stageStack.Length) stageStack[stageDepth] = stage;
+        stageDepth++;
     }
     internal static void EndStage(int stage, long elapsed)
     {
         if (!Enabled) return;
         var s = Current; s.stages[stage] += elapsed;
+        if (stageDepth > 0) stageDepth--;
         if (stage == FrameBudget.EndDraw)
         {
             long cpu = ThreadCpu();
@@ -87,6 +97,7 @@ public static class ColdTrace
         if (!Enabled || began == 0 || (uint)operation >= GraphicsOperations.Names.Length) return;
         long now = Stopwatch.GetTimestamp(), elapsed = Math.Max(0, now - began);
         var s = Current; s.nativeCounts[operation]++; s.nativeTicks[operation] += elapsed;
+        ResourceTrace.Native(elapsed);
         s.nativePeaks[operation] = Math.Max(s.nativePeaks[operation], elapsed);
         s.nativeCalls++; s.nativeTotal += elapsed;
         if (s.nativeId < 0 || elapsed > s.nativeMax) { s.nativeId = operation; s.nativeMax = elapsed; }
@@ -127,6 +138,7 @@ public static class ColdTrace
                 .Append(" atlas_sprites=").Append(s.atlasSprites).Append(" atlas_uploads=").Append(s.atlasUploads).Append(" atlas_merged=").Append(s.atlasMerged)
                 .Append(" atlas_upload_bytes=").Append(s.atlasBytes).Append(" atlas_stage_ms=").Append(Ms(s.atlasStage))
                 .Append(" atlas_flush_ms=").Append(Ms(s.atlasFlush)).Append(" atlas_flush_calls=").Append(s.atlasFlushCalls);
+            ResourceTrace.AppendFrame(line);
             Write(line.ToString());
         }
         catch { }
@@ -164,7 +176,7 @@ public static class ColdTrace
     [DllImport("libc", EntryPoint = "clock_gettime")] static extern int Clock(int id, out Timespec value);
     [DllImport("kernel32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
     static extern bool GetThreadTimes(IntPtr thread, out long creation, out long exit, out long kernel, out long user);
-    static long ThreadCpu()
+    internal static long ThreadCpu()
     {
         if (cpuUnavailable) return -1;
         try

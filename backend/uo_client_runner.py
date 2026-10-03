@@ -210,15 +210,16 @@ class Supervisor:
         report=local_client_settings(CLIENT,info)
         graphics_fixes=self.request.get('sdl_graphics_fixes',False)
         if not isinstance(graphics_fixes,bool):raise ValueError('Invalid SDL graphics fixes option')
-        report['sdl_graphics']=client_graphics.prepare(CLIENT,info,self.root,
-            graphics_fixes and self.request['renderer']=='turnip')
+        report['sdl_graphics']=client_graphics.prepare_launch(CLIENT,info,self.root,
+            graphics_fixes,self.request['renderer'],self.request.get('cold_trace',False))
         report['atlas_uploads']=client_atlas_uploads.prepare(CLIENT,info,self.root,
             frame_budget and self.request['renderer']=='turnip')
         report.update(client_frame_budget.prepare(CLIENT,info,self.root,
             self.request.get('frame_budget',True),self.request.get('render_trace',False)))
         report['music_cache']=client_music_cache.prepare(CLIENT,info,self.root,self.request.get('music_cache',True))
         report['cold_trace']=client_cold_trace.prepare(CLIENT,info,self.root,SESSION,self.request.get('cold_trace',False),
-            report['atlas_uploads']['active'] and report['frame_budget']['active'] and self.request['renderer']=='turnip')
+            report['atlas_uploads']['active'] and report['frame_budget']['active'] and self.request['renderer']=='turnip'
+            and report['sdl_graphics']['active_sha256']==client_graphics.ORIGINAL_SDL)
         self.update(cold_trace=report['cold_trace'])
         self.update(sdl_graphics=report['sdl_graphics'],render_trace=report['render_trace'],music_cache=report['music_cache'],frame_budget=report['frame_budget'],atlas_uploads=report['atlas_uploads'])
         renderer_settings(CLIENT,info,self.request['renderer'])

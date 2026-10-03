@@ -75,3 +75,33 @@ class GraphicsTests(unittest.TestCase):
         self.sdl.write_bytes(b'updated SDL')
         self.assertEqual(self.prepare(False)['action'], 'unchanged_no_original_backup')
         self.assertEqual(self.sdl.read_bytes(), b'updated SDL')
+
+    def test_cold_launch_restores_original_despite_persisted_optional_update(self):
+        self.prepare(True)
+        settings = self.client/'settings.json';settings.write_bytes(b'preserved')
+        result = graphics.prepare_launch(self.client,self.info,self.assets,True,'turnip',True)
+        self.assertEqual(result['action'],'restored_original')
+        self.assertTrue(result['optional_requested'])
+        self.assertTrue(result['original_for_diagnostics'])
+        self.assertFalse(result['requested'])
+        self.assertEqual(self.sdl.read_bytes(),b'original SDL')
+        self.assertEqual(settings.read_bytes(),b'preserved')
+        repeated = graphics.prepare_launch(self.client,self.info,self.assets,True,'turnip',True)
+        self.assertEqual(repeated['action'],'unchanged_original')
+        self.assertTrue(repeated['original_for_diagnostics'])
+
+    def test_cold_launch_never_runs_known_updated_library_without_original_backup(self):
+        self.sdl.write_bytes(b'updated SDL')
+        with self.assertRaisesRegex(ValueError,'verified backup is missing'):
+            graphics.prepare_launch(self.client,self.info,self.assets,True,'turnip',True)
+        self.assertEqual(self.sdl.read_bytes(),b'updated SDL')
+        self.assertFalse((self.client/graphics.BACKUP).exists())
+
+    def test_cold_launch_keeps_unknown_imports_and_ordinary_optional_behavior(self):
+        self.sdl.write_bytes(b'custom library')
+        result = graphics.prepare_launch(self.client,self.info,self.assets,True,'turnip',True)
+        self.assertFalse(result['original_for_diagnostics'])
+        self.assertEqual(self.sdl.read_bytes(),b'custom library')
+        self.sdl.write_bytes(b'original SDL')
+        ordinary = graphics.prepare_launch(self.client,self.info,self.assets,True,'turnip',False)
+        self.assertEqual(ordinary['action'],'updated_known_tazuo_5.2_pair')

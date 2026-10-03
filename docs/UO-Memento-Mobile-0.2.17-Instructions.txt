@@ -1,0 +1,23 @@
+UO Memento Mobile 0.2.17 — Cold resource and fence diagnostics
+
+1. Log out and save/close the working session. Install UO-Memento-Mobile-0.2.17.apk over the current app. Keep app data, the installed Wine/FEX runtime, imported client and caches.
+
+2. In Client → Client options, enable "Cold-load timing (Thor test)". Leave "Use SDL 3.4.16 (optional)" OFF. This diagnostic pass requires original SDL; if that old preference was left ON, the launcher restores the verified original before starting the diagnostic session. Keep Turnip, Native Surface, Send changed regions, Smooth world loading, music caching, current 60 FPS, 1280×720 canvas / 1098×720 world, audio and controller settings. Keep Render crash tracing and Detailed client diagnostics OFF. Start a fresh client process.
+
+3. Enter the world and wait about 30 seconds for login/loading to settle. Use a route and interior not yet visited in this client process. Avoid opening the world map, inventory or unrelated gumps during the short test.
+
+4. Before each phase, open the touch gear menu → "Mark test phase", choose the matching phase, close the menu and wait about three seconds before moving:
+   - Outdoor first pass: walk for about one minute along new terrain.
+   - Outdoor retrace: repeat that SAME outdoor route for about one minute.
+   - Interior first entry: enter the unvisited interior, wait 20 seconds, then move around for about 30 seconds.
+   - Interior exit: leave it and wait about 10 seconds.
+   - Interior re-entry: enter the SAME interior and repeat the movement for about 30 seconds.
+   - Test finished: stand still for another 10 seconds so summaries can flush.
+
+5. Note the phase/action at each visible large hitch and any coincident music change. Log out and save/close the session, then Journal → Export support logs. Send the COMPLETE ZIP before launching another client session. The phase marks must belong to this new launch; old marks cannot label its frames.
+
+6. Turn "Cold-load timing (Thor test)" OFF and relaunch for normal play. This restores the existing verified client/atlas assemblies and removes the extra resource, FNA and Vulkan observers. Atlas batching, the 0.2.13 summaries and the existing packet budget remain available with Smooth world loading.
+
+The build measures resource/loading/lock boundaries within Draw and packet work, and connects native graphics waits to prior submissions/resources. It adds no performance optimization and does not change Vulkan synchronization or frames in flight. Instrumentation has overhead; logs expose its limits. Compare marked cold and warm phases before selecting the next fix.
+
+"Back to Launcher Menu" remains the touch quick-menu label. Signing identity, upgrade compatibility, runtime, Surface behavior, audio, server, input and layout are retained. No runtime reinstall, client reimport or data clearing is required.

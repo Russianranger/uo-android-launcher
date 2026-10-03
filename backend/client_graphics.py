@@ -74,3 +74,20 @@ def prepare(root, metadata, runtime_assets, enabled):
     report['active_sha256'] = digest(sdl)
     report['active_version'] = {ORIGINAL_SDL:'3.2.27 (TazUO 5.2)', FIXED_SDL:'3.4.16'}.get(report['active_sha256'], 'unrecognized')
     return report
+
+
+def prepare_launch(root, metadata, runtime_assets, optional_enabled, renderer, cold_trace):
+    """Keep the next cold trace on the recovered original-library baseline.
+
+    Persisted optional-update preferences must not repeat the failed Thor
+    experiment when diagnostics are selected. Restoration uses the existing
+    verified backup; unknown imported libraries remain untouched.
+    """
+    original_required = cold_trace and renderer == 'turnip'
+    report = prepare(root, metadata, runtime_assets,
+                     optional_enabled and renderer == 'turnip' and not original_required)
+    report['optional_requested'] = optional_enabled
+    report['original_for_diagnostics'] = original_required and report['active_sha256'] == ORIGINAL_SDL
+    if original_required and report['active_sha256'] == FIXED_SDL:
+        raise ValueError('Cold-load timing requires the original SDL library; its verified backup is missing. Restore the original SDL3.dll from the matching client package before testing.')
+    return report

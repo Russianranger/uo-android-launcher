@@ -23,6 +23,11 @@ for operation in vkAllocateMemory vkQueueSubmit vkQueuePresentKHR vkWaitForFence
 done
 MEMENTO_COLD_TRACE=1 DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/cold-boundaries/GraphicsBoundaryProbe.exe 'Z:\check\cold-fixture' 'Z:\check\trace-layer\shim.dll' >/check/logs/proot-cold-boundaries.log 2>&1
 grep -q GRAPHICS_BOUNDARY_OK /check/logs/proot-cold-boundaries.log
+for mode in enabled disabled; do
+  if [ "$mode" = enabled ]; then cold_enabled=1; else cold_enabled=0; fi
+  MEMENTO_COLD_TRACE="$cold_enabled" DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/resource-probe/ResourceTraceProbe.exe 'Z:\check\resource-fixture' "$mode" >"/check/logs/proot-resource-$mode.log" 2>&1
+  grep -q "RESOURCE_TRACE_OK mode=$mode" "/check/logs/proot-resource-$mode.log"
+done
 
 python3 /check/check_wasapi_audio.py >/check/logs/proot-wasapi.log 2>&1
 grep -q WINE_WASAPI_PCM_OK /check/logs/proot-wasapi.log

@@ -36,7 +36,7 @@ namespace Memento
         sealed class State
         {
             internal bool active;
-            internal long deadline, packets, yields, backlog, lastUpdate, lastAudio, updateGap, audioGap, nextReport;
+            internal long deadline, packets, yields, backlog, lastUpdate, lastAudio, updateGap, audioGap, nextReport, networkResource;
             internal int consumed, depth;
             internal readonly long[] calls = new long[StageNames.Length], total = new long[StageNames.Length], max = new long[StageNames.Length];
             internal long packetCalls, packetMax, networkPacketCalls, networkPacketMax, pluginPacketCalls, pluginPacketMax;
@@ -77,7 +77,8 @@ namespace Memento
         public static long BeginNetwork()
         {
             var s = Current; long now = Stopwatch.GetTimestamp();
-            if (s.depth++ == 0) { s.active = true; s.deadline = now + BudgetTicks; s.consumed = 0; }
+            ColdTrace.BeginStage(Network, now);
+            if (s.depth++ == 0) { s.active = true; s.deadline = now + BudgetTicks; s.consumed = 0; s.networkResource = ResourceTrace.Begin(26); }
             return now;
         }
         public static bool More()
@@ -98,7 +99,7 @@ namespace Memento
         }
         public static void EndNetwork(long began)
         {
-            var s = Current; if (--s.depth == 0) s.active = false; End(Network, began);
+            var s = Current; if (--s.depth == 0) { s.active = false; ResourceTrace.End(26, s.networkResource); s.networkResource = 0; } End(Network, began);
         }
         public static long Begin(int stage)
         {

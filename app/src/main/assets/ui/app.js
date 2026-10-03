@@ -86,7 +86,7 @@ async function refresh(){
         const trace=clientState.launch?.render_trace;
         $('render-trace-status').textContent=!trace?'':trace.active?'Last launch: render crash tracing active.':trace.action==='restored_original'?'Last launch: original client DLL restored.':trace.requested?'Last launch: tracing unavailable for this client build.':'Last launch: render tracing off.';
         const graphics=clientState.launch?.sdl_graphics;
-        $('sdl-graphics-status').textContent=!graphics?'':graphics.active_version==='3.4.16'?'Last launch: SDL 3.4.16 active.':graphics.action==='restored_original'?'Last launch: original graphics library restored.':graphics.action==='unchanged_unrecognized_libraries'?'Last launch: this client’s graphics libraries were left as imported.':'Last launch: original graphics library active.';
+        $('sdl-graphics-status').textContent=!graphics?'':graphics.original_for_diagnostics?'Last launch: original graphics library for cold-load timing.':graphics.active_version==='3.4.16'?'Last launch: SDL 3.4.16 active.':graphics.action==='restored_original'?'Last launch: original graphics library restored.':graphics.action==='unchanged_unrecognized_libraries'?'Last launch: this client’s graphics libraries were left as imported.':'Last launch: original graphics library active.';
         if(nativeState.alive){
             const state=await call('state');realmState=state;badge('server-badge',state.ready?'SERVER ONLINE':state.running?'SERVER STARTING':'SERVER OFFLINE',state.ready,state.running&&!state.ready);
             if(state.build)$('build-info').textContent='Built '+state.build.revision.slice(0,12)+' · '+state.build.ref;
