@@ -33,10 +33,11 @@ def restore(root, metadata):
     original 0.2.14 atlas backups remain responsible for full restoration.
     """
     pending = []
-    for name in dict.fromkeys(row[0] for row in resources.VARIANTS):
+    restorable = resources.VARIANTS + resources.LEGACY_VARIANTS
+    for name in dict.fromkeys(row[0] for row in restorable):
         library = target(root, metadata, name)
         current = digest(library)
-        row = next((row for row in resources.VARIANTS if row[0] == name and row[2] == current), None)
+        row = next((row for row in restorable if row[0] == name and row[2] == current), None)
         if name == 'FNA.dll' and (current == PATCHED or row is not None):
             base = atlas.FNA_PATCHED
             backup = library.with_name(library.name + BACKUP_SUFFIX)
@@ -59,7 +60,7 @@ def restore(root, metadata):
 
 def prepare(root, metadata, assets, session, requested, eligible):
     if not isinstance(requested, bool):raise ValueError('Invalid cold-load diagnostics option')
-    report = {'requested':requested, 'active':False, 'revision':3, 'native_revision':2, 'diagnostic_only':True,
+    report = {'requested':requested, 'active':False, 'revision':4, 'native_revision':2, 'diagnostic_only':True,
               'long_frame_ms':50, 'max_long_records_per_5s':8}
     if not requested:return dict(report, action='disabled')
     fna = target(root, metadata)
@@ -114,5 +115,5 @@ def prepare(root, metadata, assets, session, requested, eligible):
     for library, resource_backup, data, base, updated, patched in pending:
         trace.atomic_write(library,updated,patched)
     return dict(report,active=True,action='observing_known_client',fna_sha256=digest(fna),
-                resource_boundaries=24, resource_locks=5, resource_libraries={row[0]:row[2] for _,row in selected},
+                resource_boundaries=32, chunk_parts=8, resource_locks=5, resource_libraries={row[0]:row[2] for _,row in selected},
                 layer_sha256=digest(binary),layer_path=str(directory))

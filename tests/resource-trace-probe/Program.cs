@@ -10,10 +10,18 @@ using Memento;
 if (args.Length != 2) throw new ArgumentException("fixture-folder enabled|disabled");
 string folder = Path.GetFullPath(args[0]); bool enabled = args[1] == "enabled";
 Environment.SetEnvironmentVariable("MEMENTO_COLD_TRACE", enabled ? "1" : "0");
+// CUOEnviroment captures CurrentDirectory in a readonly static field. Its real
+// SeasonManager initializer writes Data/Client there, so give all imported
+// vendor initializers a private disposable working directory from the start.
+string previousDirectory = Environment.CurrentDirectory;
+string vendorDirectory = Path.Combine(Path.GetTempPath(), "memento-vendor-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(Path.Combine(vendorDirectory, "Data", "Client"));
+Environment.CurrentDirectory = vendorDirectory;
 const BindingFlags Instance = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 const BindingFlags StateFields = BindingFlags.Instance | BindingFlags.NonPublic;
 const BindingFlags Static = BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public;
 void Check(bool ok, string why) { if (!ok) throw new Exception(why); }
+ColdTrace.Announce();
 var output = new StringWriter(CultureInfo.InvariantCulture); var saved = Console.Error; Console.SetError(output);
 try
 {
@@ -25,11 +33,16 @@ try
     int prepared = 0;
     var boundaries = new Dictionary<string, Dictionary<string, string[]>> {
         ["TazUO.dll"] = new() {
-            ["ClassicUO.Game.Map.Chunk"] = new[] { "Load" },
+            ["ClassicUO.Game.Map.Chunk"] = new[] { "Load", "AddGameObject" },
+            ["ClassicUO.Game.Map.Map"] = new[] { "GetTileZ" },
+            ["ClassicUO.Game.GameObjects.Land"] = new[] { "ApplyStretch", "Create" },
+            ["ClassicUO.Game.GameObjects.Static"] = new[] { "Create" },
+            ["ClassicUO.Game.Managers.TileMarkerManager"] = new[] { "IsTileMarked" },
             ["ClassicUO.Game.Scenes.GameScene"] = new[] { "DrawWorldRenderTarget", "DrawRenderList" },
             ["ClassicUO.Game.GameObjects.Item"] = new[] { "Create" },
             ["ClassicUO.Game.GameObjects.Mobile"] = new[] { "Create" } },
         ["ClassicUO.Assets.dll"] = new() {
+            ["ClassicUO.Assets.MapLoader"] = new[] { "SanitizeMapIndex" },
             ["ClassicUO.Assets.ArtLoader"] = new[] { "GetArt", "LoadLand", "LoadArt" },
             ["ClassicUO.Assets.GumpsLoader"] = new[] { "GetGump" },
             ["ClassicUO.Assets.TexmapsLoader"] = new[] { "GetTexmap" },
@@ -37,7 +50,7 @@ try
             ["ClassicUO.Assets.AnimationsLoader"] = new[] { "ReadUOPAnimationFrames", "ReadMULAnimationFrames" },
             ["ClassicUO.Assets.PNGLoader"] = new[] { "LoadArtTexture", "LoadGumpTexture", "GetImageTexture" } },
         ["ClassicUO.IO.dll"] = new() {
-            ["ClassicUO.IO.FileReader"] = new[] { "Read", "ReadAt" },
+            ["ClassicUO.IO.FileReader"] = new[] { "Read", "ReadAt", "get_Length" },
             ["ClassicUO.IO.MMFileReader"] = new[] { "ReadAt" } },
         ["ClassicUO.Renderer.dll"] = new() {
             ["ClassicUO.Renderer.Animations.Animations"] = new[] { "GetAnimationFrames" } },
@@ -52,7 +65,7 @@ try
             RuntimeHelpers.PrepareMethod(method.MethodHandle); prepared++;
         }
     }
-    Check(prepared == 24, "Not every patched resource body was JIT checked");
+    Check(prepared == 32, "Not every patched resource/chunk body was JIT checked");
     var readerType = io.GetType("ClassicUO.IO.MMFileReader", true)!;
     string temporary = Path.Combine(Path.GetTempPath(), "memento-resource-" + Guid.NewGuid().ToString("N"));
     File.WriteAllBytes(temporary, new byte[] { 10, 20, 30, 40, 50, 60 });
@@ -132,6 +145,7 @@ try
     Check(!enabled || (long)startupState!.GetType().GetField("frameRoots", StateFields)!.GetValue(startupState)! - beforeAssets == StartupAssetReads,
         "Actual tile/speech loaders lost startup root read observations");
     Console.WriteLine(assetResult + " root_span_calls=" + StartupAssetReads);
+    Console.WriteLine(ChunkDiagnosticProbe.Run(folder, enabled));
     var fna = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(folder, "FNA.dll"));
     var deviceType = fna.GetType("Microsoft.Xna.Framework.Graphics.GraphicsDevice", true)!;
     var device = RuntimeHelpers.GetUninitializedObject(deviceType); GC.SuppressFinalize(device);
@@ -210,8 +224,13 @@ try
         Console.SetError(new FailedWriter()); Set("nextReport", 1L); long fail = ResourceTrace.Begin(11); ResourceTrace.End(11, fail);
     }
 }
-finally { Console.SetError(saved); }
-Console.WriteLine("RESOURCE_TRACE_OK mode=" + args[1] + " jit_all_scopes=24 actual_file_reads=true bytes=true positions=true actual_resource_lock=true original_exceptions=true nested=true bounded=true allocation_free=true thread_local=true");
+finally
+{
+    Console.SetError(saved);
+    Environment.CurrentDirectory = previousDirectory;
+    Directory.Delete(vendorDirectory, true);
+}
+Console.WriteLine("RESOURCE_TRACE_OK mode=" + args[1] + " jit_all_scopes=32 actual_file_reads=true bytes=true positions=true actual_resource_lock=true original_exceptions=true nested=true bounded=true allocation_free=true thread_local=true");
 delegate int Read(Span<byte> data);
 delegate void ReadAt(long offset, Span<byte> data);
 sealed class FailedWriter : TextWriter { public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8; public override void WriteLine(string value) => throw new IOException("full fixture log"); }

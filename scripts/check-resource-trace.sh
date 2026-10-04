@@ -60,7 +60,7 @@ shutil.copy2(atlas_base,root/'FNA.dll')
 shutil.copy2('runtime-work/atlas-fixture/original/FNA.dll',root/('FNA.dll'+atlas.BACKUP_SUFFIX))
 before={p.name:p.read_bytes() for p in root.glob('*.dll')}
 report=cold.prepare(root,{'executable':'TazUO.exe'},assets,session,True,True)
-assert report['active'] and report['revision']==3 and report['native_revision']==2,report
+assert report['active'] and report['revision']==4 and report['native_revision']==2,report
 for name,data in report['resource_libraries'].items():assert cold.digest(root/name)==data
 assert cold.restore(root,{'executable':'TazUO.exe'})
 assert all((root/name).read_bytes()==data for name,data in before.items())
@@ -69,10 +69,15 @@ assert not cold.prepare(root,{'executable':'TazUO.exe'},assets,session,False,Tru
 print('PRODUCTION_RESOURCE_DELTAS_TRANSACTION_RESTORE_OK variants=7 libraries=5')
 PY
 python3 scripts/fetch-resource-fixture.py "$work/patched"
+python3 scripts/fetch-resource-fixture.py "$work/base"
 dotnet build tests/resource-trace-probe/ResourceTraceProbe.csproj -c Release --nologo -m:1
 for mode in enabled disabled; do
-  dotnet run --project tests/resource-trace-probe/ResourceTraceProbe.csproj -c Release --no-build -- "$work/patched" "$mode"
+  dotnet run --project tests/resource-trace-probe/ResourceTraceProbe.csproj -c Release --no-build -- "$work/patched" "$mode" > "$work/logs/chunk-host-$mode.log" 2>&1 || { cat "$work/logs/chunk-host-$mode.log"; exit 1; }
+  cat "$work/logs/chunk-host-$mode.log"
 done
+dotnet run --project tests/resource-trace-probe/ResourceTraceProbe.csproj -c Release --no-build -- "$work/base" disabled > "$work/logs/chunk-host-base-disabled.log" 2>&1 || { cat "$work/logs/chunk-host-base-disabled.log"; exit 1; }
+cat "$work/logs/chunk-host-base-disabled.log"
+python3 tests/compare_resource_probes.py "$work/logs/chunk-host-base-disabled.log" "$work/logs/chunk-host-disabled.log" "$work/logs/chunk-host-enabled.log"
 if [ "${1:-}" = --host-only ]; then exit 0; fi
 dotnet publish tests/resource-trace-probe/ResourceTraceProbe.csproj -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=10.0.8 -o "$work/probe" --nologo
 rm "$work/probe/Memento.FrameBudget.dll"

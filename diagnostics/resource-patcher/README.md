@@ -1,6 +1,7 @@
 # Exact-client resource timing
 
-This opt-in diagnostic layer adds 24 typed scopes and five `Monitor.Enter`
+This opt-in diagnostic layer adds 24 resource scopes, eight focused chunk
+boundaries and five `Monitor.Enter`
 observations to the checksum-pinned TazUO 5.2 assemblies, on top of the published
 frame budget, music cache, atlas batching and 0.2.16 FNA observations. Seven
 deltas cover both frame-budget/render-trace client variants and both original
@@ -12,6 +13,20 @@ loading, world rendering, animation cache locking, item/mobile creation, FNA
 image loading, and graphics resource registration/removal. Generic mapped
 `ReadAt<T>` and primitive byte/pixel getters remain untouched; terrain page
 faults through the generic method remain inside the enclosing chunk scope.
+
+The focused boundaries are map-index sanitizing, file length, tile-height
+lookup, land stretching, land/static creation, tile insertion and tile-marker
+lookup. They collect only inside an originating-thread chunk scope, with fixed
+arrays and no per-call output. `GetTileZ` includes its concrete generic MapBlock
+read; initial chunk reads and other unobserved work remain in chunk self time.
+
+`Chunk.Load` retains resource operation 14 and adds chunk identity/aggregates.
+Input map, coordinates and radar behavior are captured from the original
+arguments/fields. The world map is observed from the Map local initialized by
+the original getter, without calling it early or twice; a null map remains
+unknown and does not gain a new exception. The token-checked observation cannot
+alter a parent scope after capacity overflow. Original map fallback decisions,
+short-circuiting, file sharing, live file lengths and object state remain intact.
 
 The original IL, arguments, results, custom modifiers, constants, annotations,
 resources, native imports, and original exception regions remain intact. Typed
@@ -33,6 +48,34 @@ caused severe observer overhead. CPU fields are explicitly unavailable for that
 reason. Existing frame/EndDraw and native Linux CPU observations remain. Background threads
 without a frame have `frame=0`, `stage=none`, and unavailable start offset.
 
+`CHUNK_LOAD` has a separate bounded reporting budget from slow resource-child
+records, so many slow nested calls cannot hide the outer chunk summary. Its
+per-part counts and inclusive/self/maximum wall times aggregate every observed
+call. Nested inclusive values overlap and must not be summed as separate causes.
+
+Each record has a thread-local `chunk_id`, `parent_chunk_id`, nesting depth,
+input/world map, chunk coordinates, radar flag and originating frame/stage.
+Each named part supplies `_calls`, `_ms`, `_self_ms` and `_max_ms`. Use these
+fields to locate where the original work spent wall time:
+
+| Part | Observed original work |
+| --- | --- |
+| `sanitize_map_index` | Full map fallback check, including nested lengths |
+| `file_length` | Forwarded file-stream length query |
+| `get_tile_z` | Map index check and generic mapped MapBlock read |
+| `apply_stretch` | Height queries and land-normal calculation |
+| `land_create`, `static_create` | Original factories and constructors |
+| `tile_insert` | Original linked tile-list insertion |
+| `tile_marker` | Original marker dictionary lookup |
+
+The marker manager's earlier `get_Instance`/type initialization remains
+unassigned. `parts_root_ms` counts outermost part wall; `unassigned_ms` is
+remaining chunk wall, including unobserved calls and some observer work.
+This hierarchy is separate from existing resource self/native timing.
+`CHUNK_WINDOW` retains aggregate calls even when slow records are suppressed;
+`CHUNK_LIMITS` reports that suppression, capacity overflow and window observer
+cost. Output is deferred until the originating outer resource scope returns.
+
 Slow records require 50 ms and are capped at eight per originating thread/window.
 Count/total/max windows retain all calls; their measured `window_ms` is provided
 because reporting is deferred until the next outermost resource activity.
@@ -47,22 +90,24 @@ recoverable after interrupted preparation. The next launch first restores all
 recognized diagnostic outputs to their verified ordinary frame/music/atlas
 bases; it also recognizes the 0.2.16 diagnostic FNA for upgrades. Unknown
 assemblies are preserved. The observer requires original SDL and manifest
-native revision 2; managed diagnostic revision 3 removes resource CPU queries.
+native revision 2; focused managed observations retain revision 3's removal of
+resource CPU queries.
 Disabling cold-load timing restores all five managed libraries while
 retaining the ordinary performance improvements.
 
 Run `scripts/check-resource-trace.sh --host-only` after the atlas suite. The
 normal command also publishes/runs `ResourceTraceProbe.exe` under x64 Wine.
 The same probe is staged for retained ARM64 Wine/FEX and both PRoot modes. It
-JIT-prepares all 24 exact wrapped bodies, including their byref-like returns and
+JIT-prepares all 32 exact wrapped bodies, including their byref-like returns and
 nested exception handlers; executes real file/mapped reads and the new disposal
 exception cleanup; executes a contended graphics resource lock plus original
 null-lock failure; and verifies attribution, nesting, bounded records, thread
 isolation, network exception cleanup, stage overflow recovery, and allocation
 free warm calls. A 65,536-record startup workload executes actual numeric field
 methods plus the actual patched 20-byte name reads as root scopes, with byte,
-position, and count verification. Helper call-graph verification enforces zero
-resource CPU queries while preserving established frame CPU diagnostics.
+position, and count verification. Helper call-graph verification traverses both
+resource and chunk helpers to enforce zero new CPU queries while preserving
+established frame CPU diagnostics.
 The actual vendor tile and speech startup loaders also run against synthetic
 16,384-land/65,536-static/4,096-speech fixtures. Every decoded field and the
 vendor's unused static-array tail are validated, along with 90,112 root reads.

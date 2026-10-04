@@ -10,6 +10,7 @@ public static class ResourceTrace
 {
     const int Capacity = 32, Limit = 8;
     [ThreadStatic] static State state;
+    internal static bool HasOpenScope => state is { depth: > 0 };
     sealed class State
     {
         internal int depth, pending, written;
@@ -91,12 +92,14 @@ public static class ResourceTrace
     internal static void NewFrame()
     {
         if (state is { } s) s.overhead = s.frameRoots = s.frameWall = s.frameNative = 0;
+        ChunkTrace.NewFrame();
     }
     internal static void AppendFrame(StringBuilder line)
     {
-        if (state is not { } s) return;
-        line.Append(" resource_root_calls=").Append(s.frameRoots).Append(" resource_root_wall_ms=").Append(Ms(s.frameWall))
-            .Append(" resource_root_fna_ms=").Append(Ms(s.frameNative)).Append(" resource_trace_overhead_ms=").Append(Ms(s.overhead));
+        if (state is { } s)
+            line.Append(" resource_root_calls=").Append(s.frameRoots).Append(" resource_root_wall_ms=").Append(Ms(s.frameWall))
+                .Append(" resource_root_fna_ms=").Append(Ms(s.frameNative)).Append(" resource_trace_overhead_ms=").Append(Ms(s.overhead));
+        ChunkTrace.AppendFrame(line);
     }
     static void Flush(State s)
     {
@@ -113,6 +116,7 @@ public static class ResourceTrace
             s.written++;
         }
         s.pending = 0;
+        ChunkTrace.FlushPending();
     }
     static void Report(State s, long now)
     {

@@ -10,4 +10,9 @@ public static class ResourceOperations
         "animation_frames", "item_create", "mobile_create", "image_from_stream", "resource_register", "resource_unregister",
         "animation_lock_wait", "resource_register_lock_wait", "resource_unregister_lock_wait", "network_processing"
     };
+    // A separate ABI for aggregated, in-chunk observations. Do not reorder.
+    public static readonly string[] ChunkParts = {
+        "sanitize_map_index", "file_length", "get_tile_z", "apply_stretch",
+        "land_create", "static_create", "tile_insert", "tile_marker"
+    };
 }

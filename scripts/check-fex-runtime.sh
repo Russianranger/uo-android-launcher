@@ -47,6 +47,8 @@ bash scripts/check-cold-trace.sh --host-only > "$probe/logs/cold-host.log" 2>&1
 bash scripts/check-resource-trace.sh --host-only > "$probe/logs/resource-host.log" 2>&1
 cp -a runtime-work/cold-trace/patched "$probe/cold-fixture"
 cp -a runtime-work/resource-fixture/patched "$probe/resource-fixture"
+cp -a runtime-work/resource-fixture/base "$probe/resource-base"
+cp tests/compare_resource_probes.py "$probe/compare_resource_probes.py"
 cp runtime-work/frame-budget/Memento.FrameBudget.dll "$probe/trace-layer/"
 x86_64-w64-mingw32-gcc -shared -O2 -Wall -Wextra -Werror tests/atlas-boundary-probe/native-shim.c -o "$probe/trace-layer/shim.dll"
 dotnet publish tests/graphics-boundary-probe/GraphicsBoundaryProbe.csproj -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=10.0.8 -o "$probe/cold-boundaries" --nologo
@@ -98,11 +100,15 @@ timeout 120 /opt/wine/bin/wine /check/cold-frames/ColdTraceProbe.exe enabled >/c
 grep -q 'COLD_TRACE_OK mode=enabled' /check/logs/cold-frames.log
 for mode in enabled disabled; do
   if [ "$mode" = enabled ]; then cold_enabled=1; else cold_enabled=0; fi
-  MEMENTO_COLD_TRACE="$cold_enabled" DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/resource-probe/ResourceTraceProbe.exe 'Z:\check\resource-fixture' "$mode" >"/check/logs/resource-$mode.log" 2>&1
-  grep -q "RESOURCE_TRACE_OK mode=$mode" "/check/logs/resource-$mode.log"
-  grep -q "RESOURCE_STARTUP_READS_OK mode=$mode" "/check/logs/resource-$mode.log"
-  grep -q "RESOURCE_STARTUP_ASSETS_OK mode=$mode" "/check/logs/resource-$mode.log"
+  MEMENTO_COLD_TRACE="$cold_enabled" DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/resource-probe/ResourceTraceProbe.exe 'Z:\check\resource-fixture' "$mode" >"/check/logs/resource-chunk-$mode.log" 2>&1
+  grep -q "RESOURCE_TRACE_OK mode=$mode.*jit_all_scopes=32" "/check/logs/resource-chunk-$mode.log"
+  grep -q "RESOURCE_STARTUP_READS_OK mode=$mode" "/check/logs/resource-chunk-$mode.log"
+  grep -q "RESOURCE_STARTUP_ASSETS_OK mode=$mode" "/check/logs/resource-chunk-$mode.log"
+  grep -q "CHUNK_VENDOR_OK mode=$mode" "/check/logs/resource-chunk-$mode.log"
+  if [ "$mode" = enabled ]; then grep -q CHUNK_ACCOUNTING_OK "/check/logs/resource-chunk-$mode.log"; fi
 done
+MEMENTO_COLD_TRACE=0 DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/resource-probe/ResourceTraceProbe.exe 'Z:\check\resource-base' disabled >/check/logs/resource-chunk-base-disabled.log 2>&1
+python3 /check/compare_resource_probes.py /check/logs/resource-chunk-base-disabled.log /check/logs/resource-chunk-disabled.log /check/logs/resource-chunk-enabled.log
 # Build the app's pinned PRoot sources/patches against Linux libc for this test.
 # Android's Bionic build and device kernel still need device validation.
 apt-get update -qq >/check/logs/proot-install.log 2>&1

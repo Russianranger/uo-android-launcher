@@ -6,14 +6,19 @@ internal static class ResourceCpuPolicy
     {
         using var helper = ModuleDefinition.ReadModule(file);
         var methods = helper.GetTypes().SelectMany(t => t.Methods).ToDictionary(m => m.FullName);
-        var roots = helper.GetTypes().Where(t => t.FullName == "Memento.ResourceTrace" || t.FullName.StartsWith("Memento.ResourceTrace/"))
+        var roots = helper.GetTypes().Where(t => t.FullName == "Memento.ResourceTrace" || t.FullName.StartsWith("Memento.ResourceTrace/") ||
+                t.FullName == "Memento.ChunkTrace" || t.FullName.StartsWith("Memento.ChunkTrace/"))
             .SelectMany(t => t.Methods).ToArray();
+        if (!helper.GetTypes().Any(t => t.FullName == "Memento.ChunkTrace")) throw new Exception("Focused chunk observations are missing");
         var queue = new Queue<MethodDefinition>(roots); var visited = new HashSet<string>();
         var forbidden = new HashSet<string> { "ThreadCpu", "GetThreadTimes", "Clock", "clock_gettime", "QueryThreadCycleTime", "NtQueryInformationThread" };
         while (queue.Count != 0)
         {
             var method = queue.Dequeue();
-            if (!visited.Add(method.FullName) || !method.HasBody) continue;
+            if (!visited.Add(method.FullName)) continue;
+            if (method.HasPInvokeInfo && forbidden.Contains(method.PInvokeInfo.EntryPoint))
+                throw new Exception("A resource observation can import CPU: " + method.FullName + " -> " + method.PInvokeInfo.EntryPoint);
+            if (!method.HasBody) continue;
             foreach (var call in method.Body.Instructions.Select(i => i.Operand).OfType<MethodReference>())
             {
                 if (forbidden.Contains(call.Name)) throw new Exception("A resource observation can query CPU: " + method.FullName + " -> " + call.FullName);

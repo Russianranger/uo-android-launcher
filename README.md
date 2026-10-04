@@ -1,5 +1,11 @@
 # UO Memento Mobile
 
+## Updating to 0.2.19
+
+This diagnostic release measures work inside synchronous map-chunk loading, identified in the [0.2.18 Thor test](docs/THOR-0.2.18-ANALYSIS.md). Separate bounded chunk summaries report map/coordinates and time spent in file-length checks, terrain height/stretching, construction, marker lookup and tile insertion. It preserves live file changes and the working rendering/runtime settings; no new performance optimization is assumed.
+
+Install **UO-Memento-Mobile-0.2.19.apk** over the current app, retaining data, client, caches and Wine/FEX runtime. Keep **Use SDL 3.4.16 (optional) OFF**, enable **Cold-load timing (Thor test)** for one marked cold/warm outdoor and interior session, and export the complete Journal ZIP. Then disable cold timing for normal play. See the [short procedure](docs/UO-Memento-Mobile-0.2.19-Instructions.txt) and [record guide](docs/DIAGNOSTICS-0.2.19.md).
+
 ## Updating to 0.2.18
 
 This corrective diagnostic release addresses the black screen before login reported with 0.2.17. The client was progressing through startup assets extremely slowly: the new resource observer made two Wine CPU-time queries for each tiny primitive read. 0.2.18 removes those resource-scoped CPU queries while retaining wall/self/FNA/lock/allocation records, frame/EndDraw/native CPU measurements and bounded graphics correlation. Resource-window overhead is now visible even before the first game frame. See the [device evidence](docs/THOR-0.2.17-STARTUP-REGRESSION.md).

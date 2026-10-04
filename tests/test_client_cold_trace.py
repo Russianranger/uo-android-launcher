@@ -47,7 +47,7 @@ class ColdTraceTests(unittest.TestCase):
     def prepare(self,requested=True,eligible=True):return cold.prepare(self.root,self.info,self.assets,self.session,requested,eligible)
     def test_activation_restoration_and_repeated_option_changes(self):
         report=self.prepare();self.assertTrue(report['active'])
-        self.assertEqual(report['revision'],3);self.assertEqual(report['native_revision'],2)
+        self.assertEqual(report['revision'],4);self.assertEqual(report['native_revision'],2)
         self.assertEqual((self.root/'FNA.dll').read_bytes(),self.diagnostic)
         layer=json.loads((self.session/'vulkan-trace/memento-cold-trace.json').read_text())
         self.assertEqual(layer['layer']['library_path'],str(self.assets/cold.LIBRARY))
@@ -114,5 +114,30 @@ class ColdTraceTests(unittest.TestCase):
         (self.root/'SDL3.dll').write_bytes(b'updated sdl')
         self.assertEqual(self.prepare()['action'],'unsupported')
         for name,base in self.bases.items():self.assertEqual((self.root/name).read_bytes(),base)
+    def previous_resource_outputs(self):
+        rows=[];outputs={}
+        for name,base,output,patch_name in self.variants:
+            previous=('previous diagnostic '+name).encode()
+            rows.append((name,base,sha(previous),patch_name));outputs[name]=previous
+        return tuple(rows),outputs
+    def test_previous_resource_observer_upgrade_and_mixed_partial_restoration(self):
+        self.prepare()  # Establish the same verified backups as the older release.
+        rows,outputs=self.previous_resource_outputs()
+        for name,data in outputs.items():(self.root/name).write_bytes(data)
+        # A prior interrupted restore leaves a mixture of old/new/base files.
+        (self.root/'ClassicUO.Assets.dll').write_bytes(self.bases['ClassicUO.Assets.dll'])
+        (self.root/'ClassicUO.IO.dll').write_bytes(self.outputs['ClassicUO.IO.dll'])
+        with patch.object(resources,'LEGACY_VARIANTS',rows):
+            self.assertTrue(cold.restore(self.root,self.info))
+            self.assertFalse(cold.restore(self.root,self.info))
+        for name,data in self.bases.items():self.assertEqual((self.root/name).read_bytes(),data)
+        self.assertTrue(self.prepare()['active'])
+    def test_previous_resource_restore_preflights_missing_backup(self):
+        self.prepare();rows,outputs=self.previous_resource_outputs()
+        for name,data in outputs.items():(self.root/name).write_bytes(data)
+        name,base,_,_=rows[1];resources.backup_name(self.root/name,base).unlink()
+        with patch.object(resources,'LEGACY_VARIANTS',rows):
+            with self.assertRaisesRegex(ValueError,'backup'):cold.restore(self.root,self.info)
+        for name,data in outputs.items():self.assertEqual((self.root/name).read_bytes(),data)
 
 if __name__=='__main__':unittest.main()

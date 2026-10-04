@@ -36,5 +36,22 @@ internal static class ResourceContract
         _ => -1
     };
     internal static int LockOperation(int operation) => operation switch { 17 => 23, 21 => 24, 22 => 25, _ => -1 };
-    internal static int Expected(string name) => name switch { "TazUO.dll" => 5, "ClassicUO.Assets.dll" => 11, "ClassicUO.IO.dll" => 3, "ClassicUO.Renderer.dll" => 1, "FNA.dll" => 4, _ => 0 };
+    // Exact signatures keep overloads, generic mapped reads and primitive getters
+    // outside the focused attribution layer. These scopes only collect while an
+    // originating-thread Chunk.Load observation is active.
+    internal static readonly Dictionary<string, int> ChunkParts = new() {
+        ["System.Void ClassicUO.Assets.MapLoader::SanitizeMapIndex(System.Int32&)"] = 0,
+        ["System.Int64 ClassicUO.IO.FileReader::get_Length()"] = 1,
+        ["System.SByte ClassicUO.Game.Map.Map::GetTileZ(System.Int32,System.Int32)"] = 2,
+        ["System.Void ClassicUO.Game.GameObjects.Land::ApplyStretch(ClassicUO.Game.Map.Map,System.Int32,System.Int32,System.SByte)"] = 3,
+        ["ClassicUO.Game.GameObjects.Land ClassicUO.Game.GameObjects.Land::Create(ClassicUO.Game.World,System.UInt16)"] = 4,
+        ["ClassicUO.Game.GameObjects.Static ClassicUO.Game.GameObjects.Static::Create(ClassicUO.Game.World,System.UInt16,System.UInt16,System.Int32)"] = 5,
+        ["System.Void ClassicUO.Game.Map.Chunk::AddGameObject(ClassicUO.Game.GameObjects.GameObject,System.Int32,System.Int32)"] = 6,
+        ["System.Boolean ClassicUO.Game.Managers.TileMarkerManager::IsTileMarked(System.Int32,System.Int32,System.Int32,System.UInt16&)"] = 7,
+    };
+    internal static int ChunkPart(MethodDefinition m) => ChunkParts.TryGetValue(m.FullName, out int part) ? part : -1;
+    internal static bool IsChunk(MethodDefinition m) => m.FullName == "System.Void ClassicUO.Game.Map.Chunk::Load(System.Int32,System.Boolean)";
+    internal static int ExpectedResource(string name) => name switch { "TazUO.dll" => 5, "ClassicUO.Assets.dll" => 11, "ClassicUO.IO.dll" => 3, "ClassicUO.Renderer.dll" => 1, "FNA.dll" => 4, _ => 0 };
+    internal static int ExpectedParts(string name) => name switch { "TazUO.dll" => 6, "ClassicUO.Assets.dll" => 1, "ClassicUO.IO.dll" => 1, _ => 0 };
+    internal static int Expected(string name) => ExpectedResource(name) + ExpectedParts(name);
 }

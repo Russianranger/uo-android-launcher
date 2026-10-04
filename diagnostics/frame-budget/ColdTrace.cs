@@ -35,7 +35,7 @@ public static class ColdTrace
     static State Current => state ??= new State();
     public static void Announce()
     {
-        if (Enabled) Write("COLD_TRACE_ACTIVE revision=3 long_frame_ms=50 max_long_records_per_5s=8 max_native_records_per_5s=8 max_resource_records_per_5s=8 resource_windows=deferred_until_next_root_scope resource_cpu_scope=disabled_observer_overhead resource_self_excludes=instrumented_resource_children frame_boundary=update_start cpu_scope=thread gc_pause_scope=process");
+        if (Enabled) Write("COLD_TRACE_ACTIVE revision=4 long_frame_ms=50 max_long_records_per_5s=8 max_native_records_per_5s=8 max_resource_records_per_5s=8 max_chunk_records_per_5s=8 resource_windows=deferred_until_next_root_scope chunk_windows=deferred_until_next_root_scope resource_cpu_scope=disabled_observer_overhead resource_self_excludes=instrumented_resource_children chunk_self_excludes=instrumented_chunk_parts frame_boundary=update_start cpu_scope=thread gc_pause_scope=process");
     }
     internal static void BeginStage(int stage, long now)
     {

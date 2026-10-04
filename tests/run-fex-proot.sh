@@ -25,11 +25,15 @@ MEMENTO_COLD_TRACE=1 DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBud
 grep -q GRAPHICS_BOUNDARY_OK /check/logs/proot-cold-boundaries.log
 for mode in enabled disabled; do
   if [ "$mode" = enabled ]; then cold_enabled=1; else cold_enabled=0; fi
-  MEMENTO_COLD_TRACE="$cold_enabled" DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/resource-probe/ResourceTraceProbe.exe 'Z:\check\resource-fixture' "$mode" >"/check/logs/proot-resource-$mode.log" 2>&1
-  grep -q "RESOURCE_TRACE_OK mode=$mode" "/check/logs/proot-resource-$mode.log"
-  grep -q "RESOURCE_STARTUP_READS_OK mode=$mode" "/check/logs/proot-resource-$mode.log"
-  grep -q "RESOURCE_STARTUP_ASSETS_OK mode=$mode" "/check/logs/proot-resource-$mode.log"
+  MEMENTO_COLD_TRACE="$cold_enabled" DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/resource-probe/ResourceTraceProbe.exe 'Z:\check\resource-fixture' "$mode" >"/check/logs/proot-resource-chunk-$mode.log" 2>&1
+  grep -q "RESOURCE_TRACE_OK mode=$mode.*jit_all_scopes=32" "/check/logs/proot-resource-chunk-$mode.log"
+  grep -q "RESOURCE_STARTUP_READS_OK mode=$mode" "/check/logs/proot-resource-chunk-$mode.log"
+  grep -q "RESOURCE_STARTUP_ASSETS_OK mode=$mode" "/check/logs/proot-resource-chunk-$mode.log"
+  grep -q "CHUNK_VENDOR_OK mode=$mode" "/check/logs/proot-resource-chunk-$mode.log"
+  if [ "$mode" = enabled ]; then grep -q CHUNK_ACCOUNTING_OK "/check/logs/proot-resource-chunk-$mode.log"; fi
 done
+MEMENTO_COLD_TRACE=0 DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/resource-probe/ResourceTraceProbe.exe 'Z:\check\resource-base' disabled >/check/logs/proot-resource-chunk-base-disabled.log 2>&1
+python3 /check/compare_resource_probes.py /check/logs/proot-resource-chunk-base-disabled.log /check/logs/proot-resource-chunk-disabled.log /check/logs/proot-resource-chunk-enabled.log
 
 python3 /check/check_wasapi_audio.py >/check/logs/proot-wasapi.log 2>&1
 grep -q WINE_WASAPI_PCM_OK /check/logs/proot-wasapi.log

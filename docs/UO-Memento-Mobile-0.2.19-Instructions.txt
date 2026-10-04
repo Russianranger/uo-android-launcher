@@ -1,0 +1,21 @@
+UO Memento Mobile 0.2.19 — Focused map-chunk timing
+
+1. Save/close the current session. Install UO-Memento-Mobile-0.2.19.apk over the current app. Keep app data, imported client, caches and installed Wine/FEX runtime.
+
+2. In Client options, leave Use SDL 3.4.16 (optional) OFF and enable Cold-load timing (Thor test). Keep Turnip, Native Surface, Send changed regions, Smooth world loading, music caching, 60 FPS, 1280×720 canvas / 1098×720 world, audio and controller settings. Keep Render crash tracing and Detailed client diagnostics OFF. Start a fresh client process.
+
+3. Confirm login and world entry; note their approximate times. The previous 0.2.18 test reached its first Update in about 46 seconds. If this build remains black or behaves substantially worse, stop and export the complete Journal ZIP before another launch; retain the data and runtime.
+
+4. After entering the world, stand still for about 30 seconds. Use an outdoor route and interior not yet visited in this client process. Before each phase, touch gear → Mark test phase, select the phase, close the menu, and wait about three seconds:
+   Outdoor first pass: explore new terrain for one minute.
+   Outdoor retrace: follow the same route for one minute.
+   Interior first entry: enter, wait 20 seconds, then move for about 30 seconds.
+   Interior exit: leave and wait about 10 seconds.
+   Interior re-entry: enter the same interior and repeat movement for at least 30 seconds.
+   Test finished: stand still another 10 seconds.
+
+5. Note which actions visibly hitch, any coincident music change, and the facet if known. Save/close the session and use Journal → Export support logs. Send the COMPLETE ZIP before another launch, with startup timing and whether the cold/warm difference is still visible.
+
+6. Turn Cold-load timing OFF and relaunch for normal play. Existing verified client/atlas files are restored; atlas batching, 0.2.13 summaries and the packet budget remain.
+
+This is a diagnostic build. It measures work inside the chunk-loading boundary identified by 0.2.18, including repeated file-length checks, terrain height/construction and tile insertion. It does not cache lengths, change map data, update SDL, or claim to fix cold stutters. The original runtime, Surface behavior, signing identity, audio, input, server, layout and Back to Launcher Menu label remain.

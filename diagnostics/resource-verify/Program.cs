@@ -104,18 +104,28 @@ foreach (var type in originalTypes) {
         constants += method.Parameters.Count(p => p.HasConstant) + (method.MethodReturnType.HasConstant ? 1 : 0);
         Require(method.Attributes == target.Attributes && method.ImplAttributes == target.ImplAttributes &&
             Import(method.PInvokeInfo) == Import(target.PInvokeInfo), "method attributes/import changed: " + method.FullName);
-        int operation = ResourceContract.Operation(method);
-        if (operation < 0) { Require(Canonical(method) == Canonical(target), "unrelated method changed: " + method.FullName); unchanged++; continue; }
+        int operation = ResourceContract.Operation(method), part = ResourceContract.ChunkPart(method);
+        bool chunk = ResourceContract.IsChunk(method);
+        if (operation < 0 && part < 0) { Require(Canonical(method) == Canonical(target), "unrelated method changed: " + method.FullName); unchanged++; continue; }
+        Require(operation < 0 || part < 0, "Overlapping diagnostic boundaries");
         var body = target.Body; var instructions = body.Instructions; int cursor = 0;
         bool returns = method.ReturnType.FullName != "System.Void";
         int oldLocals = method.Body.Variables.Count;
-        Require(body.InitLocals && body.Variables.Count == oldLocals + (returns ? 2 : 1) &&
+        int resultIndex = oldLocals + 1 + (chunk ? 1 : 0);
+        Require(body.InitLocals && body.Variables.Count == oldLocals + (returns ? 2 : 1) + (chunk ? 1 : 0) &&
             body.Variables.Take(oldLocals).Select(v => v.VariableType.FullName).SequenceEqual(method.Body.Variables.Select(v => v.VariableType.FullName)) &&
-            body.Variables[oldLocals].VariableType.FullName == "System.Int64" && (!returns || body.Variables[oldLocals+1].VariableType.FullName == method.ReturnType.FullName), "Unexpected wrapper locals");
+            body.Variables[oldLocals].VariableType.FullName == "System.Int64" && (!chunk || body.Variables[oldLocals+1].VariableType.FullName == "System.Int64") &&
+            (!returns || body.Variables[resultIndex].VariableType.FullName == method.ReturnType.FullName), "Unexpected wrapper locals");
         bool Id(int id) { var i=instructions[cursor++]; return i.OpCode==OpCodes.Ldc_I4 && (int)i.Operand==id; }
         bool Call(string name) { var i=instructions[cursor++]; return i.OpCode==OpCodes.Call && i.Operand is MethodReference m && m.FullName==name; }
         bool Local(OpCode op,int n) { var i=instructions[cursor++];return i.OpCode==op && i.Operand is VariableDefinition v && v.Index==n; }
-        Require(Id(operation) && Call("System.Int64 Memento.ResourceTrace::Begin(System.Int32)") && Local(OpCodes.Stloc,oldLocals), "Unexpected prefix");
+        bool Argument(int n) { var i=instructions[cursor++];return i.OpCode==OpCodes.Ldarg && i.Operand is ParameterDefinition p && p.Index==n; }
+        bool Field(string name) { var i=instructions[cursor++];return i.OpCode==OpCodes.Ldfld && i.Operand is FieldReference f && f.FullName==name; }
+        Require(Id(operation >= 0 ? operation : part) && Call(operation >= 0 ? "System.Int64 Memento.ResourceTrace::Begin(System.Int32)" : "System.Int64 Memento.ChunkTrace::BeginPart(System.Int32)") && Local(OpCodes.Stloc,oldLocals), "Unexpected prefix");
+        var outerStart = instructions[cursor];
+        if (chunk) Require(Argument(0) && Id(-1) && instructions[cursor++].OpCode==OpCodes.Ldarg_0 && Field("System.Int32 ClassicUO.Game.Map.Chunk::X") &&
+            instructions[cursor++].OpCode==OpCodes.Ldarg_0 && Field("System.Int32 ClassicUO.Game.Map.Chunk::Y") && Argument(1) &&
+            Call("System.Int64 Memento.ChunkTrace::Begin(System.Int32,System.Int32,System.Int32,System.Int32,System.Boolean)") && Local(OpCodes.Stloc,oldLocals+1), "Unexpected chunk identity prefix");
         var map = new Dictionary<Instruction,Instruction>();
         var returnsRedirected = new List<Instruction>();
         var originalsInstructions = method.Body.Instructions.ToArray();
@@ -124,15 +134,25 @@ foreach (var type in originalTypes) {
             if (monitor) { Require(Id(ResourceContract.LockOperation(operation)), "Lock operation ID changed"); locks++; }
             var after=instructions[cursor++]; map[before]=after;
             if (before.OpCode==OpCodes.Ret) {
-                if (returns) { Require(after.OpCode==OpCodes.Stloc && after.Operand is VariableDefinition v && v.Index==oldLocals+1, "Return value not preserved"); after=instructions[cursor++]; }
+                if (returns) { Require(after.OpCode==OpCodes.Stloc && after.Operand is VariableDefinition v && v.Index==resultIndex, "Return value not preserved"); after=instructions[cursor++]; }
                 Require(after.OpCode==OpCodes.Leave,"Return did not execute cleanup"); returnsRedirected.Add(after);
             } else if (monitor) Require(after.OpCode==OpCodes.Call && after.Operand is MethodReference m2 && m2.FullName=="System.Void Memento.ResourceTrace::EnterLock(System.Object,System.Boolean&,System.Int32)", "Monitor forwarding changed");
             else Require(before.OpCode.Name.Replace(".s","")==after.OpCode.Name.Replace(".s",""), "Original opcode changed: "+before);
+            if (chunk && before.Previous?.Operand is MethodReference getter && getter.FullName=="ClassicUO.Game.Map.Map ClassicUO.Game.World::get_Map()") {
+                Require(before.OpCode==OpCodes.Stloc_0 && method.Body.Variables[0].VariableType.FullName=="ClassicUO.Game.Map.Map", "Original chunk map acquisition changed");
+                Require(Local(OpCodes.Ldloc,oldLocals+1) && Local(OpCodes.Ldloc,0), "Unexpected world-map observation operands");
+                var nonnull=instructions[cursor++]; Require(nonnull.OpCode==OpCodes.Brtrue && Id(-1), "Unexpected null-map observation");
+                var forward=instructions[cursor++]; var hasMap=instructions[cursor];
+                Require(forward.OpCode==OpCodes.Br && Local(OpCodes.Ldloc,0) && Field("System.Int32 ClassicUO.Game.Map.Map::Index"), "Unexpected observed world-map field");
+                var setMap=instructions[cursor];
+                Require(Call("System.Void Memento.ChunkTrace::SetWorldMap(System.Int64,System.Int32)") && nonnull.Operand==hasMap && forward.Operand==setMap, "World-map observation control flow changed");
+            }
         }
         var cleanup=instructions[cursor];
-        Require(Id(operation) && Local(OpCodes.Ldloc,oldLocals) && Call("System.Void Memento.ResourceTrace::End(System.Int32,System.Int64)") && instructions[cursor++].OpCode==OpCodes.Endfinally,"Unexpected cleanup");
+        if (chunk) Require(Local(OpCodes.Ldloc,oldLocals+1) && Call("System.Void Memento.ChunkTrace::End(System.Int64)"), "Unexpected chunk cleanup");
+        Require(Id(operation >= 0 ? operation : part) && Local(OpCodes.Ldloc,oldLocals) && Call(operation >= 0 ? "System.Void Memento.ResourceTrace::End(System.Int32,System.Int64)" : "System.Void Memento.ChunkTrace::EndPart(System.Int32,System.Int64)") && instructions[cursor++].OpCode==OpCodes.Endfinally,"Unexpected cleanup");
         var done=instructions[cursor++];Require(done.OpCode==OpCodes.Nop && returnsRedirected.All(i=>i.Operand==done),"Return target changed");
-        Require((!returns || Local(OpCodes.Ldloc,oldLocals+1)) && instructions[cursor++].OpCode==OpCodes.Ret && cursor==instructions.Count,"Unexpected tail");
+        Require((!returns || Local(OpCodes.Ldloc,resultIndex)) && instructions[cursor++].OpCode==OpCodes.Ret && cursor==instructions.Count,"Unexpected tail");
         string Operand(object o,bool fromOriginal) => o switch {
             Instruction i => instructions.IndexOf(fromOriginal ? map[i] : i).ToString(),
             Instruction[] list => string.Join(",",list.Select(i=>instructions.IndexOf(fromOriginal ? map[i] : i))),
@@ -153,7 +173,7 @@ foreach (var type in originalTypes) {
                 (before.FilterStart==null ? after.FilterStart==null : map[before.FilterStart]==after.FilterStart),"Original exception region changed");
         }
         var outer=body.ExceptionHandlers.Last();
-        Require(outer.HandlerType==ExceptionHandlerType.Finally && outer.TryStart==map[originalsInstructions[0]] && outer.TryEnd==cleanup && outer.HandlerStart==cleanup && outer.HandlerEnd==done,"Outer diagnostic finally changed");
+        Require(outer.HandlerType==ExceptionHandlerType.Finally && outer.TryStart==outerStart && outer.TryEnd==cleanup && outer.HandlerStart==cleanup && outer.HandlerEnd==done,"Outer diagnostic finally changed");
         changed++;
 
     }
