@@ -20,4 +20,4 @@ Structural validation must reject CPU-query paths reachable from resource observ
 
 Use the [launch-first procedure](UO-Memento-Mobile-0.2.18-Instructions.txt): install over the current app, keep original SDL with the optional update OFF, enable Cold-load timing, and first confirm login and world entry. Keep runtime, client and caches. If login still remains black after about one minute, stop and export the complete ZIP. If entry works, perform the marked outdoor/interior/retrace phases and export before another launch. Turn cold timing OFF and relaunch for normal play.
 
-Automated compatibility/overhead checks and physical-device recovery are separate gates. The Thor result is still required before claiming this startup regression is resolved.
+Automated compatibility/overhead checks and physical-device recovery are separate gates. The [October 4 Thor result](THOR-0.2.18-ANALYSIS.md) confirms launch/login recovery, while locating the largest remaining marked stall inside synchronous chunk loading. First-world loading and smaller graphics tails remain; this is not evidence that the original cold stutters are solved.
