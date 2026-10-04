@@ -1,5 +1,11 @@
 # UO Memento Mobile
 
+## Updating to 0.2.18
+
+This corrective diagnostic release addresses the black screen before login reported with 0.2.17. The client was progressing through startup assets extremely slowly: the new resource observer made two Wine CPU-time queries for each tiny primitive read. 0.2.18 removes those resource-scoped CPU queries while retaining wall/self/FNA/lock/allocation records, frame/EndDraw/native CPU measurements and bounded graphics correlation. Resource-window overhead is now visible even before the first game frame. See the [device evidence](docs/THOR-0.2.17-STARTUP-REGRESSION.md).
+
+Install **UO-Memento-Mobile-0.2.18.apk** over the current app, keeping data/runtime/client. Leave **Use SDL 3.4.16 (optional) OFF**, use **Cold-load timing (Thor test) ON** for the launch check, and keep the working Turnip / Native Surface / changed regions / Smooth world loading / music / layout / input settings. First confirm login and world entry, then perform the marked traversal test and export the complete ZIP. See the [short procedure](docs/UO-Memento-Mobile-0.2.18-Instructions.txt) and [updated diagnostic guide](docs/DIAGNOSTICS-0.2.18.md). Thor validation is still required before claiming the startup regression is resolved.
+
 ## Updating to 0.2.17
 
 This diagnostic pass follows the measured native fence/submission stalls and the remaining long Draw time. **Cold-load timing (Thor test)** adds resource/loading/lock observations and bounded Vulkan fence, submission and command/resource correlation. It retains the existing frame, packet, atlas, GC/CPU and Android presentation records. Enable it for a fresh marked outdoor/interior/retrace test, then export the complete Journal ZIP.

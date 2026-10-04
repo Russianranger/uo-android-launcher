@@ -8,6 +8,7 @@ mkdir -p "$work/logs" "$work/base" "$work/patched" "$work/variants" "$work/asset
 dotnet build diagnostics/frame-budget/Memento.FrameBudget.csproj -c Release -o runtime-work/frame-budget --nologo
 dotnet build diagnostics/resource-patcher/ResourcePatcher.csproj -c Release --nologo
 dotnet build diagnostics/resource-verify/ResourceVerify.csproj -c Release --nologo
+dotnet run --project diagnostics/resource-verify/ResourceVerify.csproj -c Release --no-build -- --helper-cpu-policy runtime-work/frame-budget/Memento.FrameBudget.dll
 python3 - <<'PY'
 from pathlib import Path
 import base64,shutil,sys
@@ -59,7 +60,7 @@ shutil.copy2(atlas_base,root/'FNA.dll')
 shutil.copy2('runtime-work/atlas-fixture/original/FNA.dll',root/('FNA.dll'+atlas.BACKUP_SUFFIX))
 before={p.name:p.read_bytes() for p in root.glob('*.dll')}
 report=cold.prepare(root,{'executable':'TazUO.exe'},assets,session,True,True)
-assert report['active'] and report['revision']==2,report
+assert report['active'] and report['revision']==3 and report['native_revision']==2,report
 for name,data in report['resource_libraries'].items():assert cold.digest(root/name)==data
 assert cold.restore(root,{'executable':'TazUO.exe'})
 assert all((root/name).read_bytes()==data for name,data in before.items())

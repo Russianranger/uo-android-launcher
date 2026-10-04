@@ -13,8 +13,8 @@ public static class ResourceTrace
     sealed class State
     {
         internal int depth, pending, written;
-        internal long serial, nextReport, windowStarted, suppressed, overflow, overhead, frameRoots, frameWall, frameNative;
-        internal readonly long[] tokens = new long[Capacity], began = new long[Capacity], children = new long[Capacity], native = new long[Capacity], allocated = new long[Capacity], cpu = new long[Capacity];
+        internal long serial, nextReport, windowStarted, suppressed, overflow, overhead, windowOverhead, frameRoots, frameWall, frameNative;
+        internal readonly long[] tokens = new long[Capacity], began = new long[Capacity], children = new long[Capacity], native = new long[Capacity], allocated = new long[Capacity];
         internal readonly int[] operations = new int[Capacity], parents = new int[Capacity];
         internal readonly int[] stages = new int[Capacity];
         internal readonly long[] frames = new long[Capacity], frameStarts = new long[Capacity];
@@ -24,7 +24,7 @@ public static class ResourceTrace
     struct Record
     {
         internal int operation, parent, depth, stage;
-        internal long frame, frameStart, start, wall, self, native, allocated, cpu;
+        internal long frame, frameStart, start, wall, self, native, allocated;
     }
     public static long Begin(int operation)
     {
@@ -41,11 +41,13 @@ public static class ResourceTrace
         s.parents[depth] = depth == 0 ? -1 : s.operations[depth - 1];
         s.children[depth] = s.native[depth] = 0;
         s.allocated[depth] = GC.GetAllocatedBytesForCurrentThread();
-        // Thread CPU on Windows/Wine is quantized. Sample outermost scopes only
-        // to avoid two kernel calls for every cached animation or created item.
-        s.cpu[depth] = depth == 0 ? ColdTrace.ThreadCpu() : -1;
+        // No resource CPU queries. Wine's GetThreadTimes performs a synchronous
+        // server round trip even for the current thread; startup loaders read
+        // fixed-width names through this scope tens of thousands of times.
+        // Retain the established frame/EndDraw and native Linux CPU observations.
         s.began[depth] = Stopwatch.GetTimestamp();
-        s.overhead += Math.Max(0, s.began[depth] - entered);
+        long observer = Math.Max(0, s.began[depth] - entered);
+        s.overhead += observer; s.windowOverhead += observer;
         return token;
     }
     public static void End(int operation, long token)
@@ -56,8 +58,6 @@ public static class ResourceTrace
         if (depth < 0 || s.tokens[depth] != token || s.operations[depth] != operation) return;
         long wall = Math.Max(0, now - s.began[depth]), own = Math.Max(0, wall - s.children[depth]);
         long allocated = Math.Max(0, GC.GetAllocatedBytesForCurrentThread() - s.allocated[depth]);
-        long cpu = depth == 0 ? ColdTrace.ThreadCpu() : -1;
-        cpu = cpu >= 0 && s.cpu[depth] >= 0 ? Math.Max(0, cpu - s.cpu[depth]) : -1;
         s.depth = depth;
         s.counts[operation]++; s.total[operation] += wall; s.self[operation] += own;
         s.peaks[operation] = Math.Max(s.peaks[operation], wall); s.nativeTotal[operation] += s.native[depth];
@@ -68,14 +68,15 @@ public static class ResourceTrace
             if (s.pending + s.written < Limit)
                 s.records[s.pending++] = new Record { operation = operation, parent = s.parents[depth], depth = depth,
                     stage = s.stages[depth], frame = s.frames[depth], frameStart = s.frameStarts[depth], start = s.began[depth],
-                    wall = wall, self = own, native = s.native[depth], allocated = allocated, cpu = cpu };
+                    wall = wall, self = own, native = s.native[depth], allocated = allocated };
             else s.suppressed++;
         }
         // A lock-wait scope may end while the original lock is now held. Delay
         // stderr formatting/output until its surrounding original method has
         // executed all cleanup and the outermost observed scope has returned.
         if (depth == 0) Flush(s);
-        s.overhead += Math.Max(0, Stopwatch.GetTimestamp() - now);
+        long observer = Math.Max(0, Stopwatch.GetTimestamp() - now);
+        s.overhead += observer; s.windowOverhead += observer;
     }
     public static void EnterLock(object value, ref bool taken, int operation)
     {
@@ -106,8 +107,7 @@ public static class ResourceTrace
                 " stage=" + (r.stage < 0 ? "none" : ColdTrace.Stages[r.stage]) + " op=" + ResourceOperations.Names[r.operation] +
                 " parent=" + (r.parent < 0 ? "none" : ResourceOperations.Names[r.parent]) + " depth=" + r.depth +
                 " wall_ms=" + Ms(r.wall) + " self_ms=" + Ms(r.self) + " nested_fna_ms=" + Ms(r.native) +
-                " allocated_bytes=" + r.allocated + " cpu_ms=" + (r.cpu < 0 ? "unavailable" : (r.cpu / 1e6).ToString("F3", CultureInfo.InvariantCulture)) +
-                " cpu_scope=" + (r.depth == 0 ? "outermost_thread" : "not_sampled_nested") +
+                " allocated_bytes=" + r.allocated + " cpu_ms=unavailable cpu_unavailable_reason=observer_overhead" +
                 " end_to_log_ms=" + Ms(Math.Max(0, Stopwatch.GetTimestamp() - r.start - r.wall)) +
                 " start_offset_ms=" + (r.frame == 0 || r.frameStart == 0 ? "unavailable" : Ms(r.start - r.frameStart)));
             s.written++;
@@ -120,9 +120,10 @@ public static class ResourceTrace
             Write("RESOURCE_WINDOW utc=" + Utc() + " thread=" + Environment.CurrentManagedThreadId + " op=" + ResourceOperations.Names[i] +
                 " window_ms=" + Ms(Math.Max(0, now - s.windowStarted)) + " calls=" + s.counts[i] + " inclusive_ms=" + Ms(s.total[i]) + " self_ms=" + Ms(s.self[i]) +
                 " max_ms=" + Ms(s.peaks[i]) + " nested_fna_ms=" + Ms(s.nativeTotal[i]));
-        Write("RESOURCE_LIMITS utc=" + Utc() + " thread=" + Environment.CurrentManagedThreadId + " window_ms=" + Ms(Math.Max(0, now - s.windowStarted)) + " slow_suppressed=" + s.suppressed + " depth_overflow=" + s.overflow);
+        Write("RESOURCE_LIMITS utc=" + Utc() + " thread=" + Environment.CurrentManagedThreadId + " window_ms=" + Ms(Math.Max(0, now - s.windowStarted)) +
+            " window_observer_overhead_ms=" + Ms(s.windowOverhead) + " slow_suppressed=" + s.suppressed + " depth_overflow=" + s.overflow);
         Array.Clear(s.counts); Array.Clear(s.total); Array.Clear(s.self); Array.Clear(s.peaks); Array.Clear(s.nativeTotal);
-        s.written = 0; s.suppressed = s.overflow = 0; s.windowStarted = now; s.nextReport = now + 5 * Stopwatch.Frequency;
+        s.written = 0; s.suppressed = s.overflow = s.windowOverhead = 0; s.windowStarted = now; s.nextReport = now + 5 * Stopwatch.Frequency;
     }
     static string Utc() => DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
     static string Ms(long ticks) => (ticks * 1000.0 / Stopwatch.Frequency).ToString("F3", CultureInfo.InvariantCulture);

@@ -59,7 +59,7 @@ def restore(root, metadata):
 
 def prepare(root, metadata, assets, session, requested, eligible):
     if not isinstance(requested, bool):raise ValueError('Invalid cold-load diagnostics option')
-    report = {'requested':requested, 'active':False, 'revision':2, 'diagnostic_only':True,
+    report = {'requested':requested, 'active':False, 'revision':3, 'native_revision':2, 'diagnostic_only':True,
               'long_frame_ms':50, 'max_long_records_per_5s':8}
     if not requested:return dict(report, action='disabled')
     fna = target(root, metadata)

@@ -26,15 +26,18 @@ and managed-pointer-returning sprite getters are not wrapped.
 self, nested FNA wall, allocation, and parent/depth. Self excludes only observed
 resource children; unobserved decoding, JIT, locks, scheduling, and disk/page
 fault work can remain in self. FNA wall is nested inside resource wall and must
-not be added to it. Allocations are inclusive of child calls. CPU is sampled only
-for outermost resource scopes; network processing supplies an outer scope so
-object creation bursts do not add CPU syscalls per object. Background threads
+not be added to it. Allocations are inclusive of child calls. Resource scopes
+make no CPU queries: Wine implements `GetThreadTimes` with synchronous server
+round trips even for the current thread, so doing this per startup name read
+caused severe observer overhead. CPU fields are explicitly unavailable for that
+reason. Existing frame/EndDraw and native Linux CPU observations remain. Background threads
 without a frame have `frame=0`, `stage=none`, and unavailable start offset.
 
 Slow records require 50 ms and are capped at eight per originating thread/window.
 Count/total/max windows retain all calls; their measured `window_ms` is provided
 because reporting is deferred until the next outermost resource activity.
-`resource_trace_overhead_ms` records observer bookkeeping/output cost in the
+`RESOURCE_LIMITS.window_observer_overhead_ms` records that cost before any frames
+exist, including asset-loader/background threads. `resource_trace_overhead_ms` records observer bookkeeping/output cost in the
 frame; it overlaps some parent/stage wall and is not an additive attribution or
 an amount that can safely be subtracted from every nested scope.
 
@@ -44,7 +47,8 @@ recoverable after interrupted preparation. The next launch first restores all
 recognized diagnostic outputs to their verified ordinary frame/music/atlas
 bases; it also recognizes the 0.2.16 diagnostic FNA for upgrades. Unknown
 assemblies are preserved. The observer requires original SDL and manifest
-revision 2. Disabling cold-load timing restores all five managed libraries while
+native revision 2; managed diagnostic revision 3 removes resource CPU queries.
+Disabling cold-load timing restores all five managed libraries while
 retaining the ordinary performance improvements.
 
 Run `scripts/check-resource-trace.sh --host-only` after the atlas suite. The
@@ -55,5 +59,12 @@ nested exception handlers; executes real file/mapped reads and the new disposal
 exception cleanup; executes a contended graphics resource lock plus original
 null-lock failure; and verifies attribution, nesting, bounded records, thread
 isolation, network exception cleanup, stage overflow recovery, and allocation
-free warm calls. Structural verification checks all other methods and metadata.
+free warm calls. A 65,536-record startup workload executes actual numeric field
+methods plus the actual patched 20-byte name reads as root scopes, with byte,
+position, and count verification. Helper call-graph verification enforces zero
+resource CPU queries while preserving established frame CPU diagnostics.
+The actual vendor tile and speech startup loaders also run against synthetic
+16,384-land/65,536-static/4,096-speech fixtures. Every decoded field and the
+vendor's unused static-array tail are validated, along with 90,112 root reads.
+Structural verification checks all other methods and metadata.
 Separate native GPU tests verify the observer and original atlas pixel behavior.

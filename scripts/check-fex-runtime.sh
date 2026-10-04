@@ -100,6 +100,8 @@ for mode in enabled disabled; do
   if [ "$mode" = enabled ]; then cold_enabled=1; else cold_enabled=0; fi
   MEMENTO_COLD_TRACE="$cold_enabled" DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/resource-probe/ResourceTraceProbe.exe 'Z:\check\resource-fixture' "$mode" >"/check/logs/resource-$mode.log" 2>&1
   grep -q "RESOURCE_TRACE_OK mode=$mode" "/check/logs/resource-$mode.log"
+  grep -q "RESOURCE_STARTUP_READS_OK mode=$mode" "/check/logs/resource-$mode.log"
+  grep -q "RESOURCE_STARTUP_ASSETS_OK mode=$mode" "/check/logs/resource-$mode.log"
 done
 # Build the app's pinned PRoot sources/patches against Linux libc for this test.
 # Android's Bionic build and device kernel still need device validation.

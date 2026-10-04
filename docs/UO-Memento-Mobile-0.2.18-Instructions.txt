@@ -1,0 +1,21 @@
+UO Memento Mobile 0.2.18 — Diagnostic startup correction
+
+1. Save/close the current session. Install UO-Memento-Mobile-0.2.18.apk over the current app. Keep app data, imported client, caches and installed Wine/FEX runtime; no clearing or reimport is needed.
+
+2. In Client options, leave Use SDL 3.4.16 (optional) OFF and enable Cold-load timing (Thor test). Keep Turnip, Native Surface, Send changed regions, Smooth world loading, music caching, 60 FPS, 1280×720 canvas / 1098×720 world, audio and controller settings. Keep Render crash tracing and Detailed client diagnostics OFF. Start a fresh client process.
+
+3. FIRST check that the login screen appears and that you can enter the world. Note approximately how long each takes. If login is still black after about one minute, stop the client and export the complete Journal ZIP immediately; do not repeatedly restart or clear data. This is a regression check, not a timeout imposed by the app.
+
+4. If login and world entry work, wait about 30 seconds, then use a route and interior not yet visited in this client process. Before each phase, touch gear → Mark test phase, choose its phase, close the menu, and wait about three seconds:
+   Outdoor first pass: new terrain for one minute.
+   Outdoor retrace: same route for one minute.
+   Interior first entry: enter, wait 20 seconds, move for about 30 seconds.
+   Interior exit: leave and wait about 10 seconds.
+   Interior re-entry: same interior and movement for about 30 seconds.
+   Test finished: stand still another 10 seconds.
+
+5. Note visible hitch actions and coincident music changes. Save/close the session, then Journal → Export support logs. Send the COMPLETE ZIP before another launch, with the login timing and whether world entry worked. New phase marks must belong to this launch.
+
+6. Turn Cold-load timing OFF and relaunch for normal play. The existing verified client/atlas libraries are restored; atlas batching, 0.2.13 summaries and the packet budget remain.
+
+0.2.18 removes the resource observer's expensive per-read Wine CPU queries. Resource wall/self/FNA/allocation/lock evidence and frame/native CPU observations remain. It preserves the original SDL, runtime, signing identity, Surface behavior, audio, input, server and layout. Back to Launcher Menu remains the touch quick-menu return label. The next game-performance decision still requires the new device logs.

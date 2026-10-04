@@ -1,5 +1,7 @@
 # Cold resource and fence diagnostics in 0.2.17
 
+This historical guide includes the resource CPU sampling that caused the Thor startup regression. The [0.2.18 correction](DIAGNOSTICS-0.2.18.md) removes that sampling and supersedes the CPU-field description below; the remaining resource/native fields and uncertainty limits still apply.
+
 The original-SDL [marked 0.2.16 test](THOR-0.2.16-ANALYSIS.md) exposed a 1,658 ms interior frame dominated by EndDraw: native fence waiting and submission accounted for about 1.103 seconds of its 1.136-second FNA swap. The stable [recovery test](THOR-0.2.16-RECOVERY.md) also exposed a 1,120 ms Draw with a 2048-square texture creation whose 221 ms native submission explained only part of Draw. That recovery launch had no new phase markers, so it cannot establish a cold/warm comparison.
 
 0.2.17 measures the two remaining gaps: which observed submission/resource preceded a native wait, and which resource, decode, loading or lock boundary consumed long Draw or packet work. It adds no performance optimization. The optional SDL test remains withdrawn after the [device low-memory exit](THOR-0.2.16-SDL-FAILURE.md).

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Buffers.Binary;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -75,6 +76,62 @@ try
         Check((int)(typeof(ResourceTrace).GetField("state", Static)?.GetValue(null)?.GetType().GetField("depth", StateFields)!.GetValue(typeof(ResourceTrace).GetField("state", Static)!.GetValue(null)) ?? 0) == 0, "Original file exception leaked a scope");
     }
     finally { File.Delete(temporary); }
+    // Startup loaders are not enclosed in the world-rendering/network scopes.
+    // Their numeric fields use the original primitive methods, followed by one
+    // small Span read for each fixed-width name. Exercise that actual root shape
+    // instead of hiding frequent reads beneath an artificial resource parent.
+    const int StartupRows = 65536, NameBytes = 20, RecordBytes = 8 + 2 + NameBytes;
+    byte[] records = new byte[StartupRows * RecordBytes];
+    for (int i = 0; i < StartupRows; i++)
+    {
+        var row = records.AsSpan(i * RecordBytes, RecordBytes);
+        BinaryPrimitives.WriteUInt64LittleEndian(row, 0xFEDCBA9800000000UL + (uint)i);
+        BinaryPrimitives.WriteUInt16LittleEndian(row[8..], (ushort)i);
+        row[10] = (byte)('a' + i % 26);
+    }
+    File.WriteAllBytes(temporary, records);
+    double startupReadsMs;
+    try
+    {
+        using var file = File.OpenRead(temporary);
+        var reader = readerType.GetConstructors(Instance).Single().Invoke(new object[] { file });
+        var read = readerType.GetMethods(Instance).Single(m => m.Name == "Read" && !m.IsGenericMethod).CreateDelegate<Read>(reader);
+        var readFlags = readerType.GetMethod("ReadUInt64", Instance)!.CreateDelegate<Func<ulong>>(reader);
+        var readGraphic = readerType.GetMethod("ReadUInt16", Instance)!.CreateDelegate<Func<ushort>>(reader);
+        var resourceState = typeof(ResourceTrace).GetField("state", Static)!.GetValue(null);
+        long before = enabled ? (long)resourceState!.GetType().GetField("frameRoots", StateFields)!.GetValue(resourceState)! : 0;
+        Check(!enabled || (int)resourceState!.GetType().GetField("depth", StateFields)!.GetValue(resourceState)! == 0,
+            "Startup record reads were enclosed in a resource scope");
+        Check((int)typeof(ColdTrace).GetProperty("ActiveStage", Static)!.GetValue(null)! == -1,
+            "Startup record reads were enclosed in a frame stage");
+        Span<byte> name = stackalloc byte[NameBytes];
+        long began = Stopwatch.GetTimestamp();
+        for (int i = 0; i < StartupRows; i++)
+        {
+            Check(readFlags() == 0xFEDCBA9800000000UL + (uint)i && readGraphic() == (ushort)i,
+                "Startup numeric field changed");
+            Check(read(name) == NameBytes && name[0] == (byte)('a' + i % 26) && name[19] == 0,
+                "Startup name bytes changed");
+        }
+        startupReadsMs = (Stopwatch.GetTimestamp() - began) * 1000.0 / Stopwatch.Frequency;
+        Check(!enabled || (long)resourceState!.GetType().GetField("frameRoots", StateFields)!.GetValue(resourceState)! - before == StartupRows,
+            "Startup root read counters lost calls");
+        Check((long)readerType.GetProperty("Position", Instance)!.GetValue(reader)! == records.Length,
+            "Startup reader position changed");
+        readerType.GetMethod("Dispose", Instance)!.Invoke(reader, null);
+    }
+    finally { File.Delete(temporary); }
+    Console.SetError(saved);
+    Console.WriteLine("RESOURCE_STARTUP_READS_OK mode=" + args[1] + " rows=" + StartupRows + " root_span_calls=" + StartupRows +
+        " numeric_fields=true name_bytes=20 elapsed_ms=" + startupReadsMs.ToString("F3", CultureInfo.InvariantCulture));
+    Console.SetError(output);
+    var startupState = typeof(ResourceTrace).GetField("state", Static)!.GetValue(null);
+    long beforeAssets = enabled ? (long)startupState!.GetType().GetField("frameRoots", StateFields)!.GetValue(startupState)! : 0;
+    string assetResult = StartupAssetProbe.Run(folder, enabled);
+    const int StartupAssetReads = 16384 + 65536 + 4096 * 2;
+    Check(!enabled || (long)startupState!.GetType().GetField("frameRoots", StateFields)!.GetValue(startupState)! - beforeAssets == StartupAssetReads,
+        "Actual tile/speech loaders lost startup root read observations");
+    Console.WriteLine(assetResult + " root_span_calls=" + StartupAssetReads);
     var fna = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(folder, "FNA.dll"));
     var deviceType = fna.GetType("Microsoft.Xna.Framework.Graphics.GraphicsDevice", true)!;
     var device = RuntimeHelpers.GetUninitializedObject(deviceType); GC.SuppressFinalize(device);
@@ -126,6 +183,7 @@ try
         while (nestedStages.Count != 0) FrameBudget.End(FrameBudget.Scene, nestedStages.Pop());
         string[] slow = output.ToString().Split('\n').Where(l => l.StartsWith("RESOURCE_CALL ")).ToArray();
         Check(slow.Any(l => l.Contains("op=resource_register_lock_wait") && l.Contains("parent=resource_register") && l.Contains("stage=draw")), "Actual contended Monitor boundary/stage was not observed");
+        Check(slow.All(l => l.Contains("cpu_ms=unavailable cpu_unavailable_reason=observer_overhead")), "Resource CPU fields imply a measurement");
         // Synthetic clock changes exercise nested accounting and rate caps
         // without extending the device test with multi-second artificial stalls.
         for (int i = 0; i < 12; i++)
@@ -139,9 +197,10 @@ try
         Check((long[])Value("nativeTotal") is var nested && nested[11] > 0 && nested[14] >= nested[11], "Nested FNA time was not propagated");
         Check(((long[])Value("self"))[14] < ((long[])Value("total"))[14], "Child time was not excluded from self");
         Set("nextReport", 1L); long flush = ResourceTrace.Begin(11); ResourceTrace.End(11, flush);
-        Check(output.ToString().Contains("RESOURCE_WINDOW ") && output.ToString().Contains("inclusive_ms=") && output.ToString().Contains("RESOURCE_LIMITS "), "Resource count/suppression windows missing");
+        Check(output.ToString().Contains("RESOURCE_WINDOW ") && output.ToString().Contains("inclusive_ms=") && output.ToString().Contains("RESOURCE_LIMITS ") &&
+            output.ToString().Contains("window_observer_overhead_ms="), "Resource count/suppression/observer-cost windows missing");
         // Warm observations create no per-call objects, strings, delegates or
-        // arrays; CPU sampling is restricted to the outermost scope.
+        // arrays; frequent resource scopes make no CPU queries.
         long outer = ResourceTrace.Begin(14);
         for (int i = 0; i < 10000; i++) { long token = ResourceTrace.Begin(11); ResourceTrace.End(11, token); }
         long before = GC.GetAllocatedBytesForCurrentThread();

@@ -3,7 +3,8 @@ using Mono.Cecil.Cil;
 using System.Security.Cryptography;
 
 
-if (args.Length != 2) throw new ArgumentException("original.dll patched.dll");
+if (args.Length == 2 && args[0] == "--helper-cpu-policy") { ResourceCpuPolicy.Verify(args[1]); return; }
+if (args.Length != 2) throw new ArgumentException("original.dll patched.dll | --helper-cpu-policy Memento.FrameBudget.dll");
 using var original = ModuleDefinition.ReadModule(args[0]);
 using var patched = ModuleDefinition.ReadModule(args[1]);
 string originalHash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(args[0]))).ToLowerInvariant();

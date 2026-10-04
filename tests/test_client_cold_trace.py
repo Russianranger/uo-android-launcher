@@ -46,7 +46,8 @@ class ColdTraceTests(unittest.TestCase):
         mock=patch.object(resources,'VARIANTS',tuple(self.variants));mock.start();self.addCleanup(mock.stop)
     def prepare(self,requested=True,eligible=True):return cold.prepare(self.root,self.info,self.assets,self.session,requested,eligible)
     def test_activation_restoration_and_repeated_option_changes(self):
-        self.assertTrue(self.prepare()['active'])
+        report=self.prepare();self.assertTrue(report['active'])
+        self.assertEqual(report['revision'],3);self.assertEqual(report['native_revision'],2)
         self.assertEqual((self.root/'FNA.dll').read_bytes(),self.diagnostic)
         layer=json.loads((self.session/'vulkan-trace/memento-cold-trace.json').read_text())
         self.assertEqual(layer['layer']['library_path'],str(self.assets/cold.LIBRARY))
