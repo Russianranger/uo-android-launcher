@@ -1,5 +1,11 @@
 # UO Memento Mobile
 
+## Updating to 0.2.20
+
+This update targets the [measured 0.2.19 bottleneck](docs/THOR-0.2.19-ANALYSIS.md): 2,115 file-length checks consumed 6.56 seconds of a 6.58-second cold interior chunk. **Client options → Faster map loading** defaults ON and reuses successful map-length checks only while one synchronous chunk is constructed. New chunks reread lengths, replaced readers are observed, and the general file reader remains live.
+
+Install **UO-Memento-Mobile-0.2.20.apk** over the current app, retaining data, imported client, caches and Wine/FEX runtime. Keep optional SDL OFF and your working Surface, audio, control and server settings. Use the [focused cold/warm test](docs/UO-Memento-Mobile-0.2.20-Instructions.txt); the previous 0.2.19 export is the before baseline. Turning Faster map loading OFF and restarting restores the previous supported client, including its existing diagnostic path. See [scope, invalidation and qualification](docs/OPTIMIZATION-0.2.20.md). Actual Thor improvement remains to be measured.
+
 ## Updating to 0.2.19
 
 This diagnostic release measures work inside synchronous map-chunk loading, identified in the [0.2.18 Thor test](docs/THOR-0.2.18-ANALYSIS.md). Separate bounded chunk summaries report map/coordinates and time spent in file-length checks, terrain height/stretching, construction, marker lookup and tile insertion. It preserves live file changes and the working rendering/runtime settings; no new performance optimization is assumed.

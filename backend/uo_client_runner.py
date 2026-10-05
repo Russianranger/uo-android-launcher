@@ -15,6 +15,7 @@ import client_music_cache
 import client_frame_budget
 import client_atlas_uploads
 import client_cold_trace
+import client_map_metadata
 import client_runtime
 import client_prefix
 from client_health import ClientHealth, prepare_render_progress
@@ -79,6 +80,7 @@ class Supervisor:
             self.env.pop('VK_INSTANCE_LAYERS',None)
             self.env.pop('VK_LAYER_PATH',None)
         if not isinstance(request.get('cold_trace',False),bool):raise ValueError('Invalid cold-load diagnostics option')
+        if not isinstance(request.get('map_metadata_cache',True),bool):raise ValueError('Invalid map metadata cache option')
         audio_driver=request.get('audio_driver','wasapi')
         if audio_driver not in ('wasapi','directsound'):raise ValueError('Invalid audio driver')
         # SDL 3 uses AUDIO_DRIVER; SDL 2 and SDL 3's legacy alias use
@@ -206,6 +208,7 @@ class Supervisor:
         if not confined(CLIENT,info['executable']).is_file():
             raise ValueError('Imported client executable is missing')
         # Repair existing imports on APK upgrade, before opening the display.
+        client_map_metadata.restore(CLIENT,info)
         client_cold_trace.restore(CLIENT,info)
         report=local_client_settings(CLIENT,info)
         graphics_fixes=self.request.get('sdl_graphics_fixes',False)
@@ -220,7 +223,14 @@ class Supervisor:
         report['cold_trace']=client_cold_trace.prepare(CLIENT,info,self.root,SESSION,self.request.get('cold_trace',False),
             report['atlas_uploads']['active'] and report['frame_budget']['active'] and self.request['renderer']=='turnip'
             and report['sdl_graphics']['active_sha256']==client_graphics.ORIGINAL_SDL)
+        report['map_metadata_cache']=client_map_metadata.prepare(CLIENT,info,self.root,
+            self.request.get('map_metadata_cache',True),report['frame_budget']['active'])
+        if report['map_metadata_cache']['active'] and report['cold_trace']['active']:
+            observed=report['cold_trace']['resource_libraries']
+            report['cold_trace']['resource_base_libraries']=dict(observed)
+            observed.update(report['map_metadata_cache']['active_sha256'])
         self.update(cold_trace=report['cold_trace'])
+        self.update(map_metadata_cache=report['map_metadata_cache'])
         self.update(sdl_graphics=report['sdl_graphics'],render_trace=report['render_trace'],music_cache=report['music_cache'],frame_budget=report['frame_budget'],atlas_uploads=report['atlas_uploads'])
         renderer_settings(CLIENT,info,self.request['renderer'])
         report['pacing']=frame_settings(CLIENT,info,self.request['display_fps'])
@@ -279,6 +289,7 @@ class Supervisor:
             'frame_budget':self.status.get('frame_budget',{}),
             'atlas_uploads':self.status.get('atlas_uploads',{}),
             'cold_trace':self.status.get('cold_trace',{}),
+            'map_metadata_cache':self.status.get('map_metadata_cache',{}),
             'attempt_started_utc':self.status['attempt_started_utc'],
             'environment':{key:env[key] for key in ('WINEDEBUG','WINEDLLOVERRIDES','WINEARCH','SDL_AUDIO_DRIVER','SDL_AUDIODRIVER')},
             'proot_acceleration_requested':self.status['proot_acceleration_requested'],

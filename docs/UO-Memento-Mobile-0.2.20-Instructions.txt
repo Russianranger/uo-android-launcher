@@ -1,0 +1,21 @@
+UO Memento Mobile 0.2.20 — Reduce repeated map metadata checks
+
+1. Save and close the current session. Install UO-Memento-Mobile-0.2.20.apk over the current app, keeping data, the imported client, caches and installed Wine/FEX runtime.
+
+2. In Client options, keep Faster map loading ON (new default), Smooth world loading ON, Use SDL 3.4.16 (optional) OFF, and Cold-load timing (Thor test) ON for this comparison. Keep the working Turnip, Native Surface, changed-region, resolution/FPS, audio and controller choices. Keep Render crash tracing and Detailed client diagnostics OFF. Start a fresh client process.
+
+3. Note launch-to-login and login-to-world times using the same stopwatch points as before. The 0.2.19 export's first managed frame occurred about 47.5 seconds after launch; that is not an exact login-ready stopwatch measurement. If startup remains black or newly fails, stop and export the complete ZIP before another launch.
+
+4. After world entry, stand still about 20–30 seconds. Before each phase use touch gear → Mark test phase, close the menu and wait about three seconds. Use locations not visited in this client process:
+   Outdoor first pass: cross several new chunks for about one minute. Note the longest visible hitch.
+   Outdoor retrace: repeat the same route for about one minute.
+   Interior first entry: enter a cold interior, wait about 20 seconds, then move around for about 30 seconds.
+   Interior exit: leave and wait about 10 seconds.
+   Interior re-entry: repeat the same interior and movement for about 30 seconds.
+   Test finished: stand still another 10 seconds.
+
+5. Report whether the former multi-second first-entry hitch is shorter or gone, whether warm revisits remain smooth, startup times, and any new terrain/static/visual, audio, control or server problem. Save/close and use Journal → Export support logs. Send the complete ZIP before starting another client session. We will compare it with your retained 0.2.19 export; you do not need to repeat that baseline now.
+
+6. Turn Cold-load timing OFF for normal play and leave Faster map loading ON. If this optimization causes a new problem, turn Faster map loading OFF and start a fresh client; the exact previous supported client behavior is restored. Keeping cold timing ON with Faster map loading OFF also preserves the 0.2.19 diagnostic comparison path. Export the failing ZIP before changing the option if possible.
+
+This release targets the measured repeated Length calls in synchronous chunk loading. It does not replace the runtime or renderer, reset caches, reimport the client or modify world/client data.

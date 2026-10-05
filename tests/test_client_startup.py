@@ -115,6 +115,40 @@ class StartupTests(unittest.TestCase):
         self.assertNotIn('MEMENTO_COLD_TRACE',supervisor.setup_environment())
         with self.assertRaisesRegex(ValueError,'Invalid cold-load'):runner.Supervisor(dict(self.request,cold_trace='true'))
 
+    def test_map_cache_unstacks_before_diagnostics_and_activates_after_them(self):
+        supervisor=runner.Supervisor(dict(self.request,map_metadata_cache=True,cold_trace=True))
+        events=[]
+        def restored_cache(*args):events.append('cache_restore');return False
+        def restored_cold(*args):events.append('cold_restore');return False
+        def prepared_cold(*args):events.append('cold_prepare');return {'active':False}
+        def prepared_cache(*args):events.append('cache_prepare');return {'active':False,'requested':args[3]}
+        with patch.object(runner.client_map_metadata,'restore',side_effect=restored_cache), \
+             patch.object(runner.client_cold_trace,'restore',side_effect=restored_cold), \
+             patch.object(runner.client_cold_trace,'prepare',side_effect=prepared_cold), \
+             patch.object(runner.client_map_metadata,'prepare',side_effect=prepared_cache) as prepare:
+            supervisor.prepare_client_configuration()
+        self.assertEqual(events,['cache_restore','cold_restore','cold_prepare','cache_prepare'])
+        self.assertEqual(prepare.call_args.args[3:],(True,False))
+        self.assertTrue(supervisor.status['map_metadata_cache']['requested'])
+        config=json.loads((runner.LOGS/'client-config.json').read_text())
+        self.assertTrue(config['map_metadata_cache']['requested'])
+        supervisor.client_environment()
+        compatibility=json.loads((runner.LOGS/'client-compatibility.json').read_text())
+        self.assertIn('map_metadata_cache',compatibility)
+        with self.assertRaisesRegex(ValueError,'map metadata'):runner.Supervisor(dict(self.request,map_metadata_cache='true'))
+
+    def test_map_cache_disabled_keeps_requested_019_diagnostics_and_uses_frame_helper(self):
+        supervisor=runner.Supervisor(dict(self.request,map_metadata_cache=False,cold_trace=True))
+        with patch.object(runner.client_map_metadata,'prepare',return_value={'active':False,'requested':False}) as prepare:
+            supervisor.prepare_client_configuration()
+        self.assertEqual(prepare.call_args.args[3],False)
+        self.assertTrue(supervisor.request['cold_trace'])
+        supervisor.status['frame_budget']={'active':True}
+        supervisor.status['map_metadata_cache']={'active':True}
+        env=supervisor.client_environment()
+        self.assertEqual(env['DOTNET_STARTUP_HOOKS'].count('Memento.FrameBudget.dll'),1)
+        self.assertFalse(any(key.startswith('MEMENTO_MAP') for key in env))
+
     def test_prefix_upgrade_repairs_once_and_failed_check_retries(self):
         marker=runner.PREFIX/'memento-prefix-ready';marker.touch() # v0.1.0 marker
         (runner.PREFIX/'system.reg').touch()

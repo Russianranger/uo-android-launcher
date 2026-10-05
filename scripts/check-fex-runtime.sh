@@ -45,17 +45,23 @@ PY
 bash scripts/check-atlas-uploads.sh --host-only > "$probe/logs/atlas-host.log" 2>&1
 bash scripts/check-cold-trace.sh --host-only > "$probe/logs/cold-host.log" 2>&1
 bash scripts/check-resource-trace.sh --host-only > "$probe/logs/resource-host.log" 2>&1
+bash scripts/check-map-metadata.sh --host-only > "$probe/logs/map-metadata-host.log" 2>&1
 cp -a runtime-work/cold-trace/patched "$probe/cold-fixture"
 cp -a runtime-work/resource-fixture/patched "$probe/resource-fixture"
 cp -a runtime-work/resource-fixture/base "$probe/resource-base"
 cp tests/compare_resource_probes.py "$probe/compare_resource_probes.py"
+cp -a runtime-work/map-metadata-fixture "$probe/map-metadata-fixture"
+cp tests/run-map-metadata-fex.sh "$probe/map-metadata-probes.sh"
+cp tests/compare_map_metadata_runtime.py "$probe/compare_map_metadata_runtime.py"
 cp runtime-work/frame-budget/Memento.FrameBudget.dll "$probe/trace-layer/"
 x86_64-w64-mingw32-gcc -shared -O2 -Wall -Wextra -Werror tests/atlas-boundary-probe/native-shim.c -o "$probe/trace-layer/shim.dll"
 dotnet publish tests/graphics-boundary-probe/GraphicsBoundaryProbe.csproj -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=10.0.8 -o "$probe/cold-boundaries" --nologo
 dotnet publish tests/cold-trace-probe/ColdTraceProbe.csproj -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=10.0.8 -o "$probe/cold-frames" --nologo
 dotnet publish tests/resource-trace-probe/ResourceTraceProbe.csproj -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=10.0.8 -o "$probe/resource-probe" --nologo
+dotnet publish tests/map-metadata-probe/MapMetadataProbe.csproj -c Release -r win-x64 --self-contained true -p:RuntimeFrameworkVersion=10.0.8 -o "$probe/map-metadata-probe" --nologo
 rm "$probe/cold-boundaries/Memento.FrameBudget.dll"
 rm "$probe/resource-probe/Memento.FrameBudget.dll"
+rm "$probe/map-metadata-probe/Memento.FrameBudget.dll"
 cp native/pcm_trasc.c tests/check_wasapi_audio.py "$probe/"
 cp tests/prefix-wine-probe.py "$probe/prefix-wine-probe.py"
 curl -fLsS --retry 3 https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-devel-3.4.16-mingw.tar.gz -o "$probe/sdk.tar.gz"
@@ -109,6 +115,9 @@ for mode in enabled disabled; do
 done
 MEMENTO_COLD_TRACE=0 DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/resource-probe/ResourceTraceProbe.exe 'Z:\check\resource-base' disabled >/check/logs/resource-chunk-base-disabled.log 2>&1
 python3 /check/compare_resource_probes.py /check/logs/resource-chunk-base-disabled.log /check/logs/resource-chunk-disabled.log /check/logs/resource-chunk-enabled.log
+# Execute the actual patched vendor chunk/sanitizer bodies with the retained
+# startup-hook helper, including original and .19 diagnostic input variants.
+bash /check/map-metadata-probes.sh map-metadata
 # Build the app's pinned PRoot sources/patches against Linux libc for this test.
 # Android's Bionic build and device kernel still need device validation.
 apt-get update -qq >/check/logs/proot-install.log 2>&1
@@ -126,7 +135,7 @@ export PROOT_LOADER=/check/proot/src/loader/loader PROOT_TMP_DIR=/tmp TRASC_PROO
 for mode in compatibility accelerated; do
   export WINEPREFIX="/tmp/fex-prefix-$mode"
   if [ "$mode" = compatibility ]; then export PROOT_NO_SECCOMP=1; else unset PROOT_NO_SECCOMP; fi
-  timeout 480 /check/proot/src/proot --kill-on-exit --sysvipc -0 -r / /bin/bash /check/proot-probes.sh >"/check/logs/proot-$mode.log" 2>&1
+  timeout 600 /check/proot/src/proot --kill-on-exit --sysvipc -0 -r / /bin/bash /check/proot-probes.sh >"/check/logs/proot-$mode.log" 2>&1
   if [ "$mode" = accelerated ]; then grep -q 'seccomp acceleration observed' "/check/logs/proot-$mode.log"; fi
   # Preserve diagnostics separately instead of overwriting the first result.
   mkdir -p "/check/logs/$mode"

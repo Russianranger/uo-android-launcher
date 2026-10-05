@@ -34,6 +34,7 @@ for mode in enabled disabled; do
 done
 MEMENTO_COLD_TRACE=0 DOTNET_STARTUP_HOOKS='Z:\check\trace-layer\Memento.FrameBudget.dll' timeout 120 /opt/wine/bin/wine /check/resource-probe/ResourceTraceProbe.exe 'Z:\check\resource-base' disabled >/check/logs/proot-resource-chunk-base-disabled.log 2>&1
 python3 /check/compare_resource_probes.py /check/logs/proot-resource-chunk-base-disabled.log /check/logs/proot-resource-chunk-disabled.log /check/logs/proot-resource-chunk-enabled.log
+bash /check/map-metadata-probes.sh proot-map-metadata
 
 python3 /check/check_wasapi_audio.py >/check/logs/proot-wasapi.log 2>&1
 grep -q WINE_WASAPI_PCM_OK /check/logs/proot-wasapi.log
