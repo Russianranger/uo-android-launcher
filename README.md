@@ -1,10 +1,18 @@
 # UO Memento Mobile
 
+## Official release 0.2.21
+
+[Download the APK](https://github.com/Russianranger/uo-android-launcher/releases/download/v0.2.21/UO-Memento-Mobile-0.2.21.apk) · [Release and checksums](https://github.com/Russianranger/uo-android-launcher/releases/tag/v0.2.21)
+
+The [physical 0.2.20 Thor comparison](docs/THOR-0.2.20-ANALYSIS.md) confirms the scoped map-metadata optimization: marked cold-interior main-thread chunks peaked at 5.795 ms, versus the prior 6,578.185 ms interior chunk. Every completed map-1 chunk in emitted windows used three original length getters instead of 2,115. Recorded marked outdoor/interior frame gaps stayed below 250 ms. A separate initial-world packet-55 stall remains documented; this release carries forward the tested client behavior.
+
+Install **UO-Memento-Mobile-0.2.21.apk** over the current app, retaining data, client, saves and accepted Wine/FEX runtime. Leave **Faster map loading** and **Smooth world loading** ON; turn **Cold-load timing (Thor test)** OFF for normal play. Keep optional SDL OFF and your working Surface, graphics, audio, controls and server settings. See the [short normal-play instructions](docs/UO-Memento-Mobile-0.2.21-Instructions.txt). The prior diagnostic path and reversible option remain available.
+
 ## Updating to 0.2.20
 
 This update targets the [measured 0.2.19 bottleneck](docs/THOR-0.2.19-ANALYSIS.md): 2,115 file-length checks consumed 6.56 seconds of a 6.58-second cold interior chunk. **Client options → Faster map loading** defaults ON and reuses successful map-length checks only while one synchronous chunk is constructed. New chunks reread lengths, replaced readers are observed, and the general file reader remains live.
 
-Install **UO-Memento-Mobile-0.2.20.apk** over the current app, retaining data, imported client, caches and Wine/FEX runtime. Keep optional SDL OFF and your working Surface, audio, control and server settings. Use the [focused cold/warm test](docs/UO-Memento-Mobile-0.2.20-Instructions.txt); the previous 0.2.19 export is the before baseline. Turning Faster map loading OFF and restarting restores the previous supported client, including its existing diagnostic path. See [scope, invalidation and qualification](docs/OPTIMIZATION-0.2.20.md). Actual Thor improvement remains to be measured.
+Install **UO-Memento-Mobile-0.2.20.apk** over the current app, retaining data, imported client, caches and Wine/FEX runtime. Keep optional SDL OFF and your working Surface, audio, control and server settings. The [focused cold/warm test](docs/UO-Memento-Mobile-0.2.20-Instructions.txt) used the previous 0.2.19 export as its before baseline; [physical improvement is now confirmed](docs/THOR-0.2.20-ANALYSIS.md). Turning Faster map loading OFF and restarting restores the previous supported client, including its existing diagnostic path. See [scope, invalidation and qualification](docs/OPTIMIZATION-0.2.20.md).
 
 ## Updating to 0.2.19
 

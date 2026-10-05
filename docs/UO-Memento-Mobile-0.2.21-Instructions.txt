@@ -1,0 +1,13 @@
+UO Memento Mobile 0.2.21 — Official release
+
+This official release carries forward the map-loading optimization tested in 0.2.20. Your Thor report and support export confirm a smoother run. It preserves the same accepted runtime, rendering, audio, controls and server behavior.
+
+1. Save and close your current session. Install UO-Memento-Mobile-0.2.21.apk over the current app, keeping app data, the imported client, caches, saves and installed Wine/FEX runtime. No runtime installation or client import is needed for this update.
+
+2. For normal play, leave Faster map loading ON and Smooth world loading ON. Turn Cold-load timing (Thor test) OFF after the completed comparison. Keep Use SDL 3.4.16 (optional) OFF, and retain your working Turnip, Native Surface, changed-region, resolution/FPS, audio and controller settings. Keep Render crash tracing and Detailed client diagnostics OFF. Restart the client after changing options.
+
+3. Use your usual login and a short normal session: cross several outdoor chunks, enter an interior and revisit it, check audio and controls, then save and close. Confirm the character and world are retained on your next normal launch. No repeat diagnostic baseline is needed.
+
+4. If a new problem appears, export the complete Journal support ZIP before another launch. Faster map loading OFF followed by a fresh client restores the previous supported chunk behavior. Cold-load timing remains available on either path, including the retained 0.2.19 comparison path with Faster map loading OFF. Enable diagnostic timing only if investigating a problem.
+
+File lengths are reused only during one synchronous chunk construction and refreshed for the next chunk. Successful login, ordinary reads and existing data remain on their established paths.
