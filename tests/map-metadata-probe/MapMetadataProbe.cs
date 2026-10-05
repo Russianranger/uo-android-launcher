@@ -299,11 +299,31 @@ internal static class MapMetadataProbe
         Check(lands == 64 && statics == 1, "Actual Chunk.Load object count changed"); writer.Flush(); return Convert.ToHexString(SHA256.HashData(bytes.ToArray())).ToLowerInvariant();
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static void ObserveOutsideChunkParts()
+    {
+        for (int i = 0; i < 10000; i++)
+            Check(ChunkTrace.BeginPart(1) == 0, "Part active outside a chunk");
+    }
+
     static void QualifyAccounting(StringWriter output)
     {
         var field = Field(typeof(ChunkTrace), "state"); var resource = Field(typeof(ResourceTrace), "state");
         field.SetValue(null, null); resource.SetValue(null, null); output.GetStringBuilder().Clear();
-        long allocation = GC.GetAllocatedBytesForCurrentThread(); for (int i = 0; i < 10000; i++) Check(ChunkTrace.BeginPart(1) == 0, "Part active outside a chunk"); Check(GC.GetAllocatedBytesForCurrentThread() == allocation && field.GetValue(null) == null, "Outside-chunk hot path allocated state");
+        // Warm the allocation counter and the same isolated loop before
+        // sampling. This baseline process has not used the counter previously;
+        // JIT/first-use work in the test harness must not be attributed to the
+        // product hot path. Any outside-chunk state creation still fails during
+        // warm-up, and the measured 10,000 calls must allocate exactly zero bytes.
+        _ = GC.GetAllocatedBytesForCurrentThread();
+        ObserveOutsideChunkParts();
+        Check(field.GetValue(null) == null, "Outside-chunk warm-up created diagnostic state");
+        long allocation = GC.GetAllocatedBytesForCurrentThread();
+        ObserveOutsideChunkParts();
+        long outsideAllocated = GC.GetAllocatedBytesForCurrentThread() - allocation;
+        Check(outsideAllocated == 0, "Outside-chunk hot path allocated bytes=" + outsideAllocated);
+        Check(field.GetValue(null) == null, "Outside-chunk hot path created diagnostic state");
+        Console.WriteLine("CHUNK_OUTSIDE_ALLOCATION_OK calls=10000 allocated_bytes=" + outsideAllocated + " diagnostic_state=false warmup_calls=10000");
         long parent = ChunkTrace.Begin(1, 9, 2, 3, false), outerPart = ChunkTrace.BeginPart(3), child = ChunkTrace.Begin(7, 8, 10, 11, true);
         ChunkTrace.SetWorldMap(parent, 99); ChunkTrace.SetWorldMap(0, 99); ChunkTrace.SetWorldMap(child, 88);
         long length = ChunkTrace.BeginPart(1); AgePart(60); ChunkTrace.EndPart(1, length); AgeScope(80); ChunkTrace.End(child);
