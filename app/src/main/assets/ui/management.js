@@ -14,7 +14,7 @@ async function awaitTask(job){
         if(!current)throw Error('Task is no longer available. Check the Journal before retrying.');
         if(current.status==='error')throw Error(current.error||current.message);
         if(current.status==='done')return current.result;
-        $('session-status').textContent=current.message;restoreProgress(current.message);updateControls();
+        $('session-status').textContent=current.message;restoreProgress(current.message);if(typeof sessionRestoreProgress==='function')sessionRestoreProgress(current.message);updateControls();
         await new Promise(resolve=>setTimeout(resolve,500));
     }
     throw Error('The task is still running. Check the Journal; it has been left running.');
@@ -23,7 +23,7 @@ async function managedClick(button,work){
     if(busy())return;
     activeActions.add(button);updateControls();
     try{await work();await refresh();}
-    catch(error){notice(error.message,true);showSetupForError(error.message);if($('restore-preview').open){$('restore-status').hidden=false;$('restore-status').textContent=error.message;$('restore-status').classList.add('error');}}
+    catch(error){notice(error.message,true);showSetupForError(error.message);if($('restore-preview').open){$('restore-status').hidden=false;$('restore-status').textContent=error.message;$('restore-status').classList.add('error');}if($('session-restore-preview').open){$('session-restore-status').hidden=false;$('session-restore-status').textContent=error.message;$('session-restore-status').classList.add('error');}}
     finally{activeActions.delete(button);updateControls();}
 }
 async function loadBackups(){

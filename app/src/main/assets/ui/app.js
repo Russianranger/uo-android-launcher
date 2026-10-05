@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id),pending=new Map();let sequence=0,polling=false,currentTab='realm',nativeState={},clientState={},realmState=null;
 const activeActions=new Set();
-const readActions=new Set(['read_log','export_logs','controller_open','client_view','load_backups','load_settings','settings_reset']);
+const readActions=new Set(['read_log','export_logs','controller_open','client_view','load_backups','load_session_backups','load_settings','settings_reset']);
 function call(operation,args={}){return new Promise((resolve,reject)=>{const id=String(++sequence);pending.set(id,{resolve,reject});if(window.Memento)Memento.call(id,operation,JSON.stringify(args));else{pending.delete(id);reject(new Error('Open this screen inside UO Memento Mobile.'));}});}
 window.nativeReply=(id,value)=>{const p=pending.get(id);if(!p)return;pending.delete(id);value.ok?p.resolve(value.result):p.reject(new Error(value.error));};
 function notice(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);}
@@ -17,7 +17,7 @@ try{const v=JSON.parse(localStorage.getItem('launch')||'{}');$('cold-trace').che
 $('gump-space').addEventListener('change',()=>{if($('gump-space').checked)$('resolution').value='1280x720';saveOptions();});
 $('resolution').addEventListener('change',()=>{if($('resolution').value!=='1280x720')$('gump-space').checked=false;saveOptions();});
 for(const id of['renderer','presentation','dirty-regions','fps','audio','audio-driver','smooth-audio','client-acceleration','frame-budget','map-metadata-cache','music-cache','sdl-graphics-fixes','render-trace','managed-diagnostics','cold-trace'])$(id).addEventListener('change',saveOptions);
-function showTab(tab){currentTab=tab;document.body.dataset.scene=tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id===tab));document.querySelectorAll('[data-tab]').forEach(b=>{b.classList.toggle('selected',b.dataset.tab===tab);b.setAttribute('aria-pressed',String(b.dataset.tab===tab));});if(tab==='saves'&&typeof loadBackups==='function')loadBackups().catch(e=>notice(e.message,true));}
+function showTab(tab){currentTab=tab;document.body.dataset.scene=tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id===tab));document.querySelectorAll('[data-tab]').forEach(b=>{b.classList.toggle('selected',b.dataset.tab===tab);b.setAttribute('aria-pressed',String(b.dataset.tab===tab));});if(tab==='saves'&&typeof loadBackups==='function')loadBackups().catch(e=>notice(e.message,true));if(tab==='journal'&&typeof loadSessionBackups==='function')loadSessionBackups().catch(e=>notice(e.message,true));}
 document.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{showTab(button.dataset.tab);if(currentTab==='journal')readLog().catch(e=>notice(e.message,true));}));
 function activeJob(){return realmState?.jobs?.find(j=>['queued','running'].includes(j.status));}
 function busy(){return activeActions.size>0||nativeState.session_busy||nativeState.installing||clientState.busy||!!activeJob();}
@@ -37,6 +37,7 @@ function updateControls(){
     }
     for(const button of document.querySelectorAll('[data-pick]'))button.disabled=!!locked;
     if(typeof managementControls==='function')managementControls(locked);
+    if(typeof setupSessionControls==='function')setupSessionControls(locked);
 }
 function showSetupForError(message){
     if(/Client setup|client runtime|complete Memento client|required \.NET/i.test(message)){showTab('client');$('client-setup').open=true;}
@@ -44,13 +45,14 @@ function showSetupForError(message){
 }
 function badge(id,text,ready,starting=false){const node=$(id);node.textContent=text;node.classList.toggle('online',!!ready);node.classList.toggle('starting',!!starting);}
 
-async function exportFile(path){await call('export',{path});notice('File exported outside the app.');if(typeof loadBackups==='function')await loadBackups();}
+async function exportFile(path){await call('export',{path});notice('File exported outside the app.');if(typeof loadBackups==='function')await loadBackups();if(typeof loadSessionBackups==='function')await loadSessionBackups();}
 async function readLog(){const r=await call('logs',{name:$('log-name').value});const selected=$('log-name').value;$('log-name').replaceChildren();for(const name of r.names){const o=document.createElement('option');o.textContent=name;$('log-name').append(o);}if(r.names.includes(selected))$('log-name').value=selected;$('log-text').textContent=r.text||'No log output yet.';}
 async function action(name){
     if(typeof managementActions!=='undefined'&&managementActions.has(name))return managementAction(name);
+    if(typeof setupSessionActions!=='undefined'&&setupSessionActions.has(name))return setupSessionAction(name);
     if(name==='read_log')return readLog();
     if(name==='export_logs'){const result=await call(name);return exportFile(result.file);}
-    const args=name==='pull_compile'?{ref:$('source-ref').value.trim()}:['session_play','client_start'].includes(name)?options():name==='desktop'?options('desktop'):{};
+    const args=['session_play','client_start'].includes(name)?options():name==='desktop'?options('desktop'):{};
     if(name==='session_play'||name==='server_start'){const message=name==='session_play'?'Opening your runtime, server and client…':'Opening runtime and starting server…';notice(message);$('session-status').textContent=message;}
     const result=await call(name==='desktop'?'client_start':name,args);
     if(result&&result.id)notice('Task started. Progress appears in the quest journal.');else notice(result.message||result.status||'Ready.');
@@ -67,7 +69,7 @@ document.querySelectorAll('[data-action]').forEach(button=>button.addEventListen
 }));
 document.querySelectorAll('[data-pick]').forEach(button=>button.addEventListener('click',async()=>{
     if(busy())return;
-    activeActions.add(button);updateControls();try{const r=await call('pick',{kind:button.dataset.pick});if(button.dataset.pick==='world')showRestorePreview(r);else notice(r.message||'Import queued. Watch the quest journal.');await refresh();}catch(e){notice(e.message,true);showSetupForError(e.message);}finally{activeActions.delete(button);updateControls();}
+    activeActions.add(button);updateControls();try{const r=await call('pick',{kind:button.dataset.pick});if(button.dataset.pick==='world')showRestorePreview(r);else if(button.dataset.pick==='session')showSessionRestorePreview(r);else notice(r.message||'Import queued. Watch the quest journal.');await refresh();}catch(e){notice(e.message,true);showSetupForError(e.message);}finally{activeActions.delete(button);updateControls();}
 }));
 const seenErrors=new Set();
 async function refresh(){
@@ -100,6 +102,7 @@ async function refresh(){
             }
             if(!state.jobs.length)$('tasks').textContent='No tasks yet.';
         }else{realmState=null;badge('server-badge','SERVER OFFLINE',false);}
+        if(typeof renderServerSource==='function')renderServerSource(realmState?.server_source);
         if(currentTab==='saves'&&typeof loadBackups==='function')await loadBackups();
         if(nativeState.session_busy)$('session-status').textContent=nativeState.session_status||'Preparing your session…';
         else if(activeJob())$('session-status').textContent=activeJob().message;
@@ -107,6 +110,7 @@ async function refresh(){
         const seconds=nativeState.session_busy?nativeState.session_seconds:activeJob()?Math.max(0,Math.floor(Date.now()/1000-(activeJob().started_at||Date.now()/1000))):0;
         $('session-elapsed').textContent=seconds?'Elapsed '+Math.floor(seconds/60)+'m '+seconds%60+'s':'';
         if(typeof restoreProgress==='function')restoreProgress();
+        if(typeof sessionRestoreProgress==='function')sessionRestoreProgress();
         updateControls();
     }catch(e){notice(e.message,true);}finally{polling=false;}
 

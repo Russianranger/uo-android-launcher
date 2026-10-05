@@ -20,6 +20,7 @@ from uo_content import (REPOSITORY, confined, extract_zip, inspect_client,
 from world_archives import SAVE_FOLDERS, extract_save_data, inspect_save_data
 from backup_catalog import backup_file, backup_files, delete_backup
 import server_settings
+import realm_sources
 
 
 class Engine:
@@ -27,13 +28,14 @@ class Engine:
         self.work = Path(work)
         self.world = self.work/'server'
         self.client = self.work/'client/current'
+        self.server_source = self.work/'server-source'
         self.process = None
         self.jobs = []
         self.pool = ThreadPoolExecutor(max_workers=1)
         self.lock = threading.RLock()
         for name in ('run','logs','incoming','exports','backups','client'):
             (self.work/name).mkdir(parents=True, exist_ok=True)
-        for live in (self.world, self.client, self.work/'client/dotnet'):
+        for live in (self.world, self.server_source, self.client, self.work/'client/dotnet'):
             previous = live.with_name(live.name+'.previous')
             if not live.exists() and previous.exists():
                 os.replace(previous, live)
@@ -60,11 +62,12 @@ class Engine:
             return {'running':self.running(), 'ready':self.ready(), 'compiled':(self.world/'WorldLinux.exe').is_file(),
                     'mono_ready':bool(shutil.which('mcs') and shutil.which('mono')),
                     'build':json.loads(build.read_text()) if build.exists() else None,
+                    'server_source':realm_sources.source_info(self.server_source),
                     'client':json.loads(client.read_text()) if client.exists() else None,
                     'jobs':[dict(j) for j in self.jobs[-15:]], 'free_bytes':shutil.disk_usage(self.work).free}
 
     def submit(self, operation, args):
-        allowed = {'prepare_runtime','pull_compile','import_client_zip','prepare_dotnet','server_start',
+        allowed = {'prepare_runtime','pull_compile','import_server_zip','compile_server','import_client_zip','prepare_dotnet','server_start',
                    'server_stop','server_save','backup_world','restore_world','save_backup',
                    'delete_backup','prune_backups','settings_save','settings_undo'}
         if operation not in allowed:
@@ -114,67 +117,150 @@ class Engine:
         self.require_stopped()
         if not shutil.which('mcs'):
             raise ValueError('Prepare the Mono compiler first')
-        ref = args.get('ref','main').strip()
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,159}',ref) or '..' in ref or ref.endswith('/'):
-            raise ValueError('Enter a branch, tag or commit SHA')
-        source = self.work/'source'
+        selected = realm_sources.selection(args, self.selected_server_source() if 'source' not in args else None)
+        repository, ref = selected['repository'], selected['ref']
+        # Each repository gets its own cache; changing the selection cannot
+        # silently keep fetching the origin from a previous clone.
+        import hashlib
+        source = self.work/'sources'/('git-'+hashlib.sha256(repository.encode()).hexdigest()[:24])
+        source.parent.mkdir(exist_ok=True)
         if not (source/'.git').is_dir():
-            if source.exists():
-                raise ValueError('Source folder exists without Git metadata')
-            self.command(['git','clone','--no-checkout',REPOSITORY,str(source)])
+            if source.exists(): raise ValueError('Source cache exists without Git metadata')
+            try:
+                self.command(['git','clone','--no-checkout','--no-tags','--',repository,str(source)])
+            except BaseException:
+                shutil.rmtree(source,ignore_errors=True)
+                raise
+        origin = subprocess.check_output(['git','-C',str(source),'config','--get','remote.origin.url'],text=True,timeout=60).strip()
+        if realm_sources.repository_url(origin) != repository:
+            raise ValueError('Source cache origin does not match the selected repository')
         self.command(['git','-C',str(source),'fetch','--depth','1','origin',ref])
-        revision = subprocess.check_output(['git','-C',str(source),'rev-parse','FETCH_HEAD'],text=True).strip()
-        staging = self.work/'server-staging'
-        shutil.rmtree(staging,ignore_errors=True)
+        revision = subprocess.check_output(['git','-C',str(source),'rev-parse','FETCH_HEAD'],text=True,timeout=60).strip()
+        if not re.fullmatch(r'[a-f0-9]{40}|[a-f0-9]{64}',revision):
+            raise ValueError('Git did not return a supported source commit')
+        selected.update(revision=revision, imported_at=time.time())
         export = self.work/'source-export'
+        prepared = self.work/'source-staging'
         shutil.rmtree(export,ignore_errors=True)
+        shutil.rmtree(prepared,ignore_errors=True)
         export.mkdir()
-        # Git archive is produced from a commit fetched from the fixed repository.
         archive = self.work/'incoming/source.zip'
         self.command(['git','-C',str(source),'archive','--format=zip','--output='+str(archive),revision])
         try:
             extract_zip(archive,export)
-            if not (export/'World/Source/Tools/compile-world-linux.sh').exists():
-                raise ValueError('This revision has no supported Memento Mono build layout')
-            shutil.move(str(export/'World'),staging)
-            if self.world.exists():
-                self.backup_world({'reason':'Before server update'})
-                # Preserve the entire mutable data/configuration trees across source upgrades.
-                for name in ('Saves','Info','Data','Backups'):
-                    old=self.world/name
-                    if old.is_dir():
-                        shutil.copytree(old,staging/name,dirs_exist_ok=True,ignore=shutil.ignore_patterns('Files') if name=='Data' else None)
-            misc=staging/'Source/Scripts/System/Misc'
-            shutil.copy2(Path(__file__).with_name('MementoAndroidControl.cs'),misc/'MementoAndroidControl.cs')
-            for name, before, after in (
-                ('ServerList.cs','public static readonly string Address = MySettings.S_Address;','public static readonly string Address = "127.0.0.1";'),
-                ('ServerList.cs','public static readonly bool AutoDetect = MySettings.S_AutoDetect;','public static readonly bool AutoDetect = false;'),
-                ('SocketOptions.cs','new IPEndPoint( IPAddress.Any, MySettings.S_Port )','new IPEndPoint( IPAddress.Loopback, 2593 )')):
-                p=misc/name
-                text=p.read_text()
-                if before not in text:
-                    raise ValueError('Upstream '+name+' changed; review its local-network patch before compiling')
-                p.write_text(text.replace(before,after))
-            tools=staging/'Source/Tools'
-            self.command(['mcs','-optimize+','-unsafe','-t:exe','-out:'+str(staging/'WorldLinux.exe'),
-                          '-win32icon:../System/icon.ico','-nowarn:219,414','-d:NEWTIMERS','-d:NEWPARENT','-d:MONO',
-                          '-recurse:../System/*.cs','-main:Server.Core'],cwd=tools)
-            write_json(staging/'memento-build.json',{'repository':REPOSITORY,'revision':revision,'ref':ref,'built_at':time.time()})
-            swap_directory(staging,self.world)
-            self.link_assets()
+            prepared.mkdir()
+            shutil.move(str(realm_sources.inspect_server(export)),prepared/'World')
+            write_json(prepared/realm_sources.SOURCE_MARKER, selected)
+            result = self._compile_server(prepared, selected, activate_source=True)
         finally:
             archive.unlink(missing_ok=True)
             shutil.rmtree(export,ignore_errors=True)
-            shutil.rmtree(staging,ignore_errors=True)
-        return {'message':'Memento compiled at '+revision[:12]+'. Scripts compile on first server start.'}
+            shutil.rmtree(prepared,ignore_errors=True)
+        return result
 
-    def link_assets(self):
+    def selected_server_source(self):
+        selected = realm_sources.source_info(self.server_source)
+        if selected: return selected
+        build = self.world/'memento-build.json'
+        if build.is_file():
+            info = json.loads(build.read_text())
+            if info.get('source') == 'zip': return info
+            if info.get('repository'):
+                return dict(info, source=realm_sources.source_kind(info['repository']))
+        # Before source selection existed, this clone was the only persistent
+        # source record. Read its actual origin rather than guessing a default.
+        legacy = self.work/'source'
+        if (legacy/'.git').is_dir():
+            origin = subprocess.check_output(['git','-C',str(legacy),'config','--get','remote.origin.url'],text=True,timeout=60).strip()
+            repository = realm_sources.repository_url(origin)
+            return {'repository':repository, 'source':realm_sources.source_kind(repository), 'ref':'main'}
+        return None
+
+    def import_server_zip(self, args):
+        self.require_stopped()
+        archive = confined(self.work/'incoming',args['file'])
+        export, prepared = self.work/'source-export', self.work/'source-staging'
+        shutil.rmtree(export,ignore_errors=True)
+        shutil.rmtree(prepared,ignore_errors=True)
+        try:
+            digest = realm_sources.sha256_file(archive)
+            extract_zip(archive,export)
+            world = realm_sources.inspect_server(export)
+            prepared.mkdir()
+            shutil.move(str(world),prepared/'World')
+            metadata = {'format':1, 'source':'zip', 'archive_sha256':digest, 'imported_at':time.time()}
+            write_json(prepared/realm_sources.SOURCE_MARKER,metadata)
+            swap_directory(prepared,self.server_source)
+        finally:
+            archive.unlink(missing_ok=True)
+            shutil.rmtree(export,ignore_errors=True)
+            shutil.rmtree(prepared,ignore_errors=True)
+        return {'message':'Server ZIP imported. Prepare Mono if needed, then compile the imported server.', 'server_source':metadata}
+
+    def compile_server(self, _):
+        self.require_stopped()
+        if not shutil.which('mcs'): raise ValueError('Prepare the Mono compiler first')
+        metadata = realm_sources.source_info(self.server_source)
+        if metadata is None: raise ValueError('Import a server ZIP or pull a server source first')
+        return self._compile_server(self.server_source,metadata)
+
+    def _compile_server(self, prepared, metadata, activate_source=False):
+        staging = self.work/'server-staging'
+        shutil.rmtree(staging,ignore_errors=True)
+        activated = False
+        try:
+            source_world = realm_sources.inspect_server(prepared)
+            shutil.copytree(source_world,staging)
+            defaults = (staging/server_settings.SETTINGS).read_text()
+            settings_added = []
+            if self.world.exists():
+                # Preserve all current mutable trees, including custom settings
+                # and scripts, and compile those against the new server core.
+                for name in ('Saves','Info','Data','Backups'):
+                    old = self.world/name
+                    if old.is_symlink() or (old.exists() and not old.is_dir()):
+                        raise ValueError(name+' must be a real folder before updating the server')
+                    if name in ('Saves','Backups'):
+                        # Missing save folders are empty too. Never resurrect
+                        # the account/world defaults from another source.
+                        shutil.rmtree(staging/name,ignore_errors=True)
+                        (staging/name).mkdir()
+                    if old.is_dir():
+                        rebuild_assets = name=='Data' and (self.client/'memento-client.json').is_file()
+                        ignore = (lambda folder,names: ['Files'] if Path(folder)==old and 'Files' in names else []) if rebuild_assets else None
+                        shutil.copytree(old,staging/name,dirs_exist_ok=True,symlinks=True,ignore=ignore)
+                settings_path = confined(staging,server_settings.SETTINGS)
+                settings, settings_added = realm_sources.add_missing_settings(settings_path.read_text(), defaults)
+                if settings_added: settings_path.write_text(settings)
+            scripts = realm_sources.compile_server(staging,self.command)
+            write_json(staging/'memento-build.json',dict(metadata,built_at=time.time(),scripts_checked=scripts,settings_added=settings_added))
+            self.link_assets(staging)
+            if self.world.exists(): self.backup_world({'reason':'Before server update'})
+            swap_directory(staging,self.world)
+            activated = True
+            if activate_source: swap_directory(prepared,self.server_source)
+        except BaseException:
+            # A source activation failure must also roll the live deployment
+            # back. swap_directory itself restores a failed directory rename.
+            if activated:
+                shutil.rmtree(self.world,ignore_errors=True)
+                previous = self.world.with_name(self.world.name+'.previous')
+                if previous.exists(): os.replace(previous,self.world)
+            raise
+        finally:
+            shutil.rmtree(staging,ignore_errors=True)
+        description = metadata.get('revision','')[:12] or 'imported ZIP '+metadata['archive_sha256'][:12]
+        return {'message':'Memento compiled from '+description+'. Core and '+str(scripts)+' scripts checked; ready to start.',
+                'server_source':metadata}
+
+    def link_assets(self, world=None):
+        world = self.world if world is None else Path(world)
         marker=self.client/'memento-client.json'
-        if not marker.is_file() or not self.world.exists():
+        if not marker.is_file() or not world.exists():
             return
         info=json.loads(marker.read_text())
         source=confined(self.client,info['assets'])
-        destination=self.world/'Data/Files'
+        destination=world/'Data/Files'
         destination.parent.mkdir(parents=True,exist_ok=True)
         if destination.is_symlink():
             destination.unlink()

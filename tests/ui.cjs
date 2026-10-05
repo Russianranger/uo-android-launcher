@@ -13,16 +13,29 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  });
  await page.addInitScript((settingsFixture)=>{
   window.settingsFixture=settingsFixture;window.mockJobs=[];window.backupReport=[{name:'memento-world-2.zip',file:'exports/memento-world-2.zip',bytes:2000,created_at:1790871000,reason:'Before restore'},{name:'memento-world-1.zip',file:'exports/memento-world-1.zip',bytes:1000,created_at:1790870000,reason:'Manual backup',exported_at:1790870100}];
+  window.sessionBackupReport=JSON.parse(localStorage.getItem('mock-native-session-backups')||'[]');window.sessionPreview={file:'85e774ed-5192-4fd2-a402-19a9d1ae0f45.zip',name:'complete-session.zip',created_at:1790870200,bytes:9000,unpacked_bytes:18000,files:34,components:['realm runtime','FEX client runtime','server source','world saves','client','Wine prefix','controller mappings','launcher settings'],ui:{launch:{runtime_backend:'fex-arm64ec-1',pacing_revision:1,renderer:'virgl',resolution:'1024x768',presentation_mode:'rfb',display_fps:30,audio:true,smooth_audio:true,dirty_regions:true,gump_space:false},source:{source:'fork',ref:'restored-tag'}}};
   window.calls=[];window.Memento={call(id,op,args){window.calls.push({op,args:JSON.parse(args)});let result={};
    if(op==='session_play'&&window.holdSession){window.nativeReport={session_busy:true,session_cancellable:true,session_seconds:12,session_status:'Starting server · waiting for the world to be ready…'};window.heldSession=id;return;}
    if(op==='session_play'&&window.sessionFailure){setTimeout(()=>window.nativeReply(id,{ok:false,error:window.sessionFailure}),0);return;}
    if(op==='client_start'||op==='session_play')window.clientActive=true;
    if(op==='native_state')result={alive:true,installed:true,status:'Realm runtime ready',version:'0.2.16',free_bytes:24*1073741824,...window.nativeReport};
    if(op==='client_native_state')result={alive:!!window.clientActive,display_ready:!!window.clientActive,installed:true,status:'TazUO is ready to launch.',launch:{sdl_graphics:window.graphicsReport}};
-   if(op==='state')result={running:false,ready:false,build:{revision:'916d1ec666376ef44366c986befa3200deb93eb0',ref:'main'},client:{executable:'Client/TazUO.exe',architecture:'x64',dotnet_version:'10.0.0'},jobs:[],...window.realmReport};
+   if(op==='state')result={running:false,ready:false,build:{revision:'916d1ec666376ef44366c986befa3200deb93eb0',ref:'main'},server_source:window.serverSource||null,client:{executable:'Client/TazUO.exe',architecture:'x64',dotnet_version:'10.0.0'},jobs:[],...window.realmReport};
    if(op==='state')result.jobs=[...result.jobs,...window.mockJobs];
    if(op==='backups')result={entries:window.backupReport,total_bytes:window.backupReport.reduce((sum,entry)=>sum+entry.bytes,0)};
    if(op==='backup_preview')result={name:JSON.parse(args).name,backup:JSON.parse(args).name,folders:['Info','Saves','Backups'],bytes:2000,files:12,unpacked_bytes:4000};
+   if(op==='pull_compile'){window.serverSource={...JSON.parse(args),repository:JSON.parse(args).repository||(JSON.parse(args).source==='upstream'?'https://github.com/Jascen/ultima-memento.git':'https://github.com/Russianranger/ultima-memento.git'),revision:'916d1ec666376ef44366c986befa3200deb93eb0'};result={id:'pull-'+window.calls.length};window.mockJobs.push({...result,status:'done',message:'Server compiled',result:{message:'Server compiled'}});}
+   if(op==='compile_server'){result={id:'compile-'+window.calls.length};window.mockJobs.push({...result,status:'done',message:'Imported server compiled',result:{message:'Imported server compiled'}});}
+   if(op==='pick'&&JSON.parse(args).kind==='server'){window.serverSource={kind:'zip',name:'offline-server.zip'};result={id:'import-'+window.calls.length,message:'Server source imported. Compile next.'};window.mockJobs.push({...result,status:'done',result:{message:result.message}});}
+   if(op==='pick'&&JSON.parse(args).kind==='session')result=structuredClone(window.sessionPreview);
+   if(op==='session_backup_preview')result={...structuredClone(window.sessionPreview),file:JSON.parse(args).file};
+   if(op==='session_backups')result={entries:window.sessionBackupReport,total_bytes:window.sessionBackupReport.reduce((sum,entry)=>sum+entry.bytes,0)};
+   if(op==='session_ui_preferences')result=window.sessionUiPreferences||{};
+   if(op==='session_backup'){window.clientActive=false;window.nativeReport={alive:false,session_busy:false};result={file:'exports/memento-session-1.zip',message:'Complete session backup created.'};window.sessionBackupReport.unshift({file:result.file,name:'memento-session-1.zip',bytes:9000,created_at:1790870200,reason:'Manual complete session backup'});localStorage.setItem('mock-native-session-backups',JSON.stringify(window.sessionBackupReport));}
+   if(op==='session_restore'&&window.sessionRestoreFailure){setTimeout(()=>window.nativeReply(id,{ok:false,error:window.sessionRestoreFailure}),0);return;}
+   if(op==='session_restore'){window.clientActive=false;window.nativeReport={alive:false,session_busy:false};window.serverSource={source:'fork',repository:'https://github.com/Russianranger/ultima-memento.git',ref:'restored-tag'};result={message:'Complete session restored.',ui:structuredClone(window.sessionPreview.ui),ui_revision:'restored-ui-1',rollback_backup:'exports/memento-session-before-restore.zip'};window.sessionUiPreferences={ui:result.ui,revision:result.ui_revision};window.sessionBackupReport.unshift({file:result.rollback_backup,name:'memento-session-before-restore.zip',bytes:10000,created_at:1790870300,reason:'Before complete session restore'});localStorage.setItem('mock-native-session-backups',JSON.stringify(window.sessionBackupReport));}
+   if(op==='export'&&window.exportFailure){setTimeout(()=>window.nativeReply(id,{ok:false,error:window.exportFailure}),0);return;}
+   if(op==='export'){const archive=window.sessionBackupReport.find(entry=>entry.file===JSON.parse(args).path);if(archive){archive.exported_at=1790870400;localStorage.setItem('mock-native-session-backups',JSON.stringify(window.sessionBackupReport));}}
    if(op==='restore_world'&&window.restoreFailure){setTimeout(()=>window.nativeReply(id,{ok:false,error:window.restoreFailure}),0);return;}
    if(op==='settings_read')result=structuredClone(window.settingsFixture);
    if(['settings_save','settings_undo','save_backup','delete_backup','prune_backups','restore_world'].includes(op)){
@@ -39,6 +52,41 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  },settingsFixture);
  await page.goto('https://app.memento.local/index.html');await page.waitForTimeout(200);
  if(await page.title()!=='UO Memento Mobile')throw Error('App name missing from launcher');
+ // Source selection defaults upstream, persists independently, and sends only the selected source.
+ await page.locator('#realm-setup > summary').click();
+ if(await page.locator('#source-kind').inputValue()!=='upstream'||await page.locator('#custom-source').isVisible())throw Error('Upstream must be the default source');
+ if(!await page.locator('[data-action="compile_server"]').isDisabled())throw Error('Compilation is enabled without staged server source');
+ await page.locator('[data-action="pull_compile"]').click();
+ await page.waitForFunction(()=>window.calls.some(call=>call.op==='pull_compile'&&call.args.source==='upstream'&&call.args.ref==='main'&&!Object.hasOwn(call.args,'repository')));
+ await page.locator('#source-kind').selectOption('fork');await page.locator('#source-ref').fill('my-tag');
+ await page.locator('[data-action="pull_compile"]').click();
+ await page.waitForFunction(()=>window.calls.some(call=>call.op==='pull_compile'&&call.args.source==='fork'&&call.args.ref==='my-tag'&&!Object.hasOwn(call.args,'repository')));
+ await page.locator('#source-kind').selectOption('custom');
+ if(!await page.locator('#custom-source').isVisible())throw Error('Custom repository input is hidden');
+ await page.locator('#source-repository').fill('http://github.com/example/server');
+ const pullsBeforeInvalid=await page.evaluate(()=>window.calls.filter(call=>call.op==='pull_compile').length);
+ await page.locator('[data-action="pull_compile"]').click();
+ await page.waitForFunction(()=>document.getElementById('notice').classList.contains('error'));
+ if(await page.evaluate(()=>window.calls.filter(call=>call.op==='pull_compile').length)!==pullsBeforeInvalid)throw Error('Invalid custom source dispatched a native pull');
+ await page.locator('#source-repository').fill('https://github.com/example/offline-memento.git');await page.locator('#source-ref').fill('custom-branch');
+ await page.locator('[data-action="pull_compile"]').click();
+ await page.waitForFunction(()=>window.calls.some(call=>call.op==='pull_compile'&&call.args.repository==='https://github.com/example/offline-memento.git'&&call.args.ref==='custom-branch'&&call.args.source==='custom'));
+ await page.locator('#source-repository').fill('https://gitlab.com/example/group/memento.git');
+ await page.locator('[data-action="pull_compile"]').click();
+ await page.waitForFunction(()=>window.calls.some(call=>call.op==='pull_compile'&&call.args.repository==='https://gitlab.com/example/group/memento.git'&&call.args.source==='custom'));
+ await page.locator('#source-repository').fill('https://github.com/example/offline-memento.git');
+ await page.reload();await page.locator('#realm-setup > summary').click();
+ if(await page.locator('#source-kind').inputValue()!=='custom'||await page.locator('#source-ref').inputValue()!=='custom-branch'||await page.locator('#source-repository').inputValue()!=='https://github.com/example/offline-memento.git')throw Error('Server source preferences did not persist');
+ // Importing offline server source stages it; compilation is an explicit separate operation.
+ await page.locator('#server-offline > summary').click();
+ await page.evaluate(()=>{window.calls=[];window.serverSource=null;});
+ await page.locator('[data-pick="server"]').click();
+ await page.waitForFunction(()=>document.getElementById('offline-source-status').textContent.includes('offline-server.zip'));
+ if(await page.evaluate(()=>window.calls.some(call=>call.op==='compile_server'||call.op==='pull_compile')))throw Error('Offline import compiled or downloaded without the separate step');
+ await page.locator('[data-action="compile_server"]').click();
+ await page.waitForFunction(()=>window.calls.some(call=>call.op==='compile_server'&&Object.keys(call.args).length===0));
+ if(!await page.locator('#build-info').textContent().then(text=>text.includes('916d1ec66637')))throw Error('Source controls lost the installed build report');
+ await page.locator('#realm-setup > summary').click();
  fs.mkdirSync('ui-reports',{recursive:true});
  await page.screenshot({path:'ui-reports/realm-landscape.png',fullPage:true});
  await page.locator('[data-tab="client"]').click();
@@ -180,6 +228,70 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  await page.locator('#confirm-restore').click();await page.waitForFunction(()=>window.calls.some(call=>call.op==='restore_world'));
  if(!await page.evaluate(()=>{const close=window.calls.findIndex(call=>call.op==='session_close'),restore=window.calls.findIndex(call=>call.op==='restore_world');return close>=0&&restore>close;}))throw Error('Restore did not save and close the session first');
  await page.waitForFunction(()=>!document.getElementById('restore-preview').open);
+ // Complete session backups retain an export link after a cancelled external picker.
+ await page.locator('[data-tab="journal"]').click();
+ await page.evaluate(()=>{window.calls=[];window.exportFailure='Export cancelled. The app copy was kept.';});
+ await page.locator('[data-action="session_backup"]').click();
+ await page.waitForFunction(()=>document.getElementById('notice').textContent.includes('app copy was kept'));
+ if(!await page.evaluate(()=>{const backup=window.calls.find(call=>call.op==='session_backup'),exported=window.calls.find(call=>call.op==='export');return backup?.args.ui.launch.display_fps===60&&backup.args.ui.source.source==='custom'&&backup.args.ui.source.ref==='custom-branch'&&exported?.args.path==='exports/memento-session-1.zip';}))throw Error('Complete session backup missed source/launch preferences or export');
+ if(await page.locator('#session-backup-list .backup-card').count()!==1)throw Error('Cancelled export lost the complete session backup link');
+ await page.evaluate(()=>window.exportFailure='');
+ await page.locator('#session-backup-list').getByRole('button',{name:'Export',exact:true}).click();
+ await page.waitForFunction(()=>window.calls.filter(call=>call.op==='export').length===2);
+ await page.waitForFunction(()=>!!document.querySelector('#session-backup-list .exported'));
+ if(await page.evaluate(()=>window.calls.filter(call=>call.op==='session_backup').length)!==1)throw Error('Retrying export recreated the complete session archive');
+ // Preview and cancellation are available while the runtimes are closed, without replacing data.
+ await page.evaluate(()=>{window.calls=[];window.nativeReport={alive:false,installed:false,session_busy:false};window.clientActive=true;});
+ await page.evaluate(async()=>await refresh());
+ await page.locator('[data-pick="session"]').click();
+ await page.locator('#session-restore-preview').waitFor({state:'visible'});
+ if(!await page.locator('#session-restore-components').textContent().then(text=>text.includes('Wine prefix')&&text.includes('launcher settings')))throw Error('Complete session preview is missing its component list');
+ if(!await page.locator('#session-restore-preview').textContent().then(text=>text.includes('Components absent from the backup are removed')&&text.includes('snapshot')))throw Error('Complete replacement and snapshot confirmation are unclear');
+ await page.setViewportSize({width:360,height:800});
+ if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error('Complete session dialog overflows 360px viewport');
+ await page.screenshot({path:'ui-reports/session-restore-phone.png',fullPage:true});
+ await page.locator('#cancel-session-restore').click();
+ if(await page.evaluate(()=>window.calls.some(call=>call.op==='session_restore')))throw Error('Cancelling complete session preview restored data');
+ if(!await page.evaluate(()=>window.calls.some(call=>call.op==='discard_import'&&call.args.file==='85e774ed-5192-4fd2-a402-19a9d1ae0f45.zip')))throw Error('Cancelled complete session import was kept in staging');
+ // Native restore errors stay visible; successful restoration restores preferences and settings.
+ await page.locator('[data-pick="session"]').click();await page.locator('#session-restore-preview').waitFor({state:'visible'});
+ await page.evaluate(()=>window.sessionRestoreFailure='Snapshot could not be created; installation was kept.');
+ await page.locator('#confirm-session-restore').click();
+ await page.waitForFunction(()=>document.getElementById('session-restore-status').textContent.includes('installation was kept')&&!document.getElementById('confirm-session-restore').disabled);
+ if(!await page.locator('#session-restore-status').isVisible())throw Error('Complete session restore error is hidden behind its dialog');
+ const settingsReadsBeforeSessionRestore=await page.evaluate(()=>window.calls.filter(call=>call.op==='settings_read').length);
+ await page.evaluate(()=>window.sessionRestoreFailure='');
+ await page.locator('#confirm-session-restore').click();
+ await page.waitForFunction(()=>!document.getElementById('session-restore-preview').open);
+ if(!await page.evaluate(()=>window.calls.some(call=>call.op==='session_restore'&&call.args.file==='85e774ed-5192-4fd2-a402-19a9d1ae0f45.zip'&&call.args.ui.source.source==='custom'&&call.args.ui.launch.display_fps===60)))throw Error('Restore did not pass current preferences for the pre-restore snapshot');
+ if(await page.locator('#source-kind').inputValue()!=='fork'||await page.locator('#source-ref').inputValue()!=='restored-tag'||await page.locator('#custom-source').isVisible())throw Error('Complete session restore lost source preferences');
+ if(await page.locator('#renderer').inputValue()!=='virgl'||await page.locator('#resolution').inputValue()!=='1024x768'||await page.locator('#fps').inputValue()!=='30'||!await page.locator('#audio').isChecked())throw Error('Complete session restore lost launch preferences');
+ if(await page.evaluate(()=>window.calls.filter(call=>call.op==='settings_read').length)<=settingsReadsBeforeSessionRestore)throw Error('Complete session restore kept stale server settings');
+ if(!await page.evaluate(()=>localStorage.getItem('session-ui-revision')==='restored-ui-1'&&JSON.parse(localStorage.getItem('realm-source')).ref==='restored-tag'&&JSON.parse(localStorage.getItem('launch')).renderer==='virgl'))throw Error('Restored UI preferences did not persist');
+ await page.waitForFunction(()=>document.querySelectorAll('#session-backup-list .backup-card').length===2);
+ if(!await page.locator('#session-backup-list').textContent().then(text=>text.includes('Before complete session restore')))throw Error('Automatic pre-restore snapshot lacks an export link');
+ await page.locator('#session-backup-list .backup-card').first().getByRole('button',{name:'Preview / restore'}).click();await page.locator('#session-restore-preview').waitFor({state:'visible'});await page.locator('#cancel-session-restore').click();
+ if(!await page.evaluate(()=>window.calls.some(call=>call.op==='session_backup_preview'&&call.args.file==='exports/memento-session-before-restore.zip')))throw Error('Stored complete session backup cannot be previewed');
+ if(!await page.evaluate(()=>window.calls.every(call=>call.op!=='discard_import'||!call.args.file.startsWith('exports/'))))throw Error('Cancelling catalog preview tried to discard an app session backup');
+ if(!await page.locator('#notice').textContent().then(text=>text.includes('restore cancelled')))throw Error('Cancelling a catalog preview reported an error');
+ for(const tab of ['realm','client','saves','journal']){
+  await page.locator(`[data-tab="${tab}"]`).click();
+  if(tab==='realm'){await page.locator('#realm-setup').evaluate(node=>node.open=true);await page.locator('#source-kind').selectOption('custom');await page.locator('#source-repository').fill('https://github.com/example/a-long-server-repository-name-for-mobile-layout.git');}
+  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error(tab+' overflows 360px viewport with source/session controls');
+ }
+ // A recovered native transaction applies its saved preferences once, preserving later edits.
+ await page.addInitScript(()=>{window.sessionUiPreferences={ui:{launch:{renderer:'software',resolution:'800x600',display_fps:30,audio:false,gump_space:false},source:{source:'upstream',ref:'recovered-tag'}},revision:'recovered-ui-2'};});
+ await page.reload();
+ await page.waitForFunction(()=>localStorage.getItem('session-ui-revision')==='recovered-ui-2');
+ if(await page.locator('#source-ref').inputValue()!=='recovered-tag'||await page.locator('#renderer').inputValue()!=='software')throw Error('Recovered native session restore did not apply its UI preferences');
+ await page.locator('[data-tab="journal"]').click();await page.waitForFunction(()=>document.querySelectorAll('#session-backup-list .backup-card').length===2);
+ if(!await page.locator('#session-backup-list .exported').count())throw Error('Reopening the app lost complete session export status');
+ await page.locator('[data-tab="realm"]').click();
+ await page.locator('#realm-setup').evaluate(node=>node.open=true);await page.locator('#source-ref').fill('after-recovery');
+ await page.locator('[data-tab="client"]').click();await page.locator('#client-options > summary').click();await page.locator('#renderer').selectOption('virgl');
+ await page.reload();
+ if(await page.locator('#source-ref').inputValue()!=='after-recovery'||await page.locator('#renderer').inputValue()!=='virgl')throw Error('Native restore preference revision overwrote later user edits');
+ await page.locator('[data-tab="realm"]').click();
  // Cancel Play uses the dedicated shutdown action while ordinary mutations stay locked.
  await page.evaluate(()=>{window.holdSession=true;window.nativeReport={alive:true,session_busy:false};window.realmReport={running:false,ready:false,jobs:[]};window.mockJobs=[];});
  await page.locator('[data-action="session_play"]').click();
@@ -190,6 +302,6 @@ const settingsFixture=JSON.parse(require('child_process').execFileSync('python3'
  await page.locator('[data-tab="client"]').click();await page.screenshot({path:'ui-reports/client-phone-collapsed.png',fullPage:true});
  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error('Collapsed client view overflows phone viewport');
  if(errors.length)throw Error(errors.join('\n'));
- console.log('Collapsed client options, saved defaults, guarded Play and setup errors, server readiness, archive links, and phone/landscape layouts passed');
+ console.log('Client options, guarded Play, source selection and offline compile, save-data backups, complete session backup/restore and recovery, settings, and 360px/phone/landscape layouts passed');
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});

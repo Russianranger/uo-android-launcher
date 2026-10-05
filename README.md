@@ -1,12 +1,18 @@
 # UO Memento Mobile
 
-## Official release 0.2.21
+## Official release 0.2.22
 
-[Download the APK](https://github.com/Russianranger/uo-android-launcher/releases/download/v0.2.21/UO-Memento-Mobile-0.2.21.apk) · [Release and checksums](https://github.com/Russianranger/uo-android-launcher/releases/tag/v0.2.21)
+[Download the APK](https://github.com/Russianranger/uo-android-launcher/releases/download/v0.2.22/UO-Memento-Mobile-0.2.22.apk) · [Release and checksums](https://github.com/Russianranger/uo-android-launcher/releases/tag/v0.2.22)
+
+Runtime extraction now copies archive hard links into ordinary files, addressing devices that deny Android hard-link creation. The accepted Realm and Wine/FEX archives stay unchanged. Both exact archives passed host extraction checks under simulated `EACCES`; a physical Android 16 setup test remains pending.
+
+**Realm setup & updates → step 2** now offers **Upstream** (`Jascen/ultima-memento`, the default), **My source** (`Russianranger/ultima-memento`), or a custom public HTTPS Git source, with a branch/tag/commit field. Offline server ZIP import stages validated source; **Compile staged server source** is a separate step. Installing this APK does not change an existing deployed server.
+
+**Journal** adds complete session backup/export and preview/restore, including installed runtimes, server/source, world, imported client/assets, Wine prefix, .NET, controller mappings and launcher choices. Restore validates before closing the current session and requires a complete local snapshot before replacing an existing installation. App exports, logs and temporary/download caches are excluded; the archive list keeps export available after picker cancellation. Allow room for the imported ZIP, unpacked replacement and automatic backup in addition to the existing installation.
 
 The [physical 0.2.20 Thor comparison](docs/THOR-0.2.20-ANALYSIS.md) confirms the scoped map-metadata optimization: marked cold-interior main-thread chunks peaked at 5.795 ms, versus the prior 6,578.185 ms interior chunk. Every completed map-1 chunk in emitted windows used three original length getters instead of 2,115. Recorded marked outdoor/interior frame gaps stayed below 250 ms. A separate initial-world packet-55 stall remains documented; this release carries forward the tested client behavior.
 
-Install **UO-Memento-Mobile-0.2.21.apk** over the current app, retaining data, client, saves and accepted Wine/FEX runtime. Leave **Faster map loading** and **Smooth world loading** ON; turn **Cold-load timing (Thor test)** OFF for normal play. Keep optional SDL OFF and your working Surface, graphics, audio, controls and server settings. See the [short normal-play instructions](docs/UO-Memento-Mobile-0.2.21-Instructions.txt). The prior diagnostic path and reversible option remain available.
+Install **UO-Memento-Mobile-0.2.22.apk** over the current app, retaining data, client, saves and accepted Wine/FEX runtime. Leave **Faster map loading** and **Smooth world loading** ON; turn **Cold-load timing (Thor test)** OFF for normal play. Keep optional SDL OFF and your working Surface, graphics, audio, controls and server settings. See the [short instructions](docs/UO-Memento-Mobile-0.2.22-Instructions.txt) and [setup, session backup and device checks](docs/SETUP-AND-SESSION-0.2.22.md). The prior diagnostic path and reversible option remain available. Release download links are populated when 0.2.22 is published.
 
 ## Updating to 0.2.20
 
@@ -125,13 +131,13 @@ A standalone ARM64 Android launcher for **Ultima Memento + the imported Windows 
 ## First test on the AYN Thor
 
 1. Install the APK. Open **Realm → Realm setup & updates → Install realm runtime**, then **Open runtime → Prepare Mono compiler**. These first downloads require internet.
-2. Use **Pull & compile** with `main` to fetch `Russianranger/ultima-memento`. You can also enter a tag or commit SHA. The source revision appears after compilation.
+2. In step 2, select **Upstream** (the default, `Jascen/ultima-memento`), **My source** (`Russianranger/ultima-memento`), or a custom public HTTPS Git repository. Use **Pull & compile** with `main`, a tag or a commit SHA. The staged source and compiled revision appear separately. For offline server setup, **Import server source ZIP**, then explicitly **Compile staged server source** after preparing Mono and importing the complete client.
 3. In **Client → Client setup & import**, import your **complete Windows Memento client folder or ZIP**, including `TazUO.exe` (or `ClassicUO.exe`), its DLL/runtimeconfig, and the Memento asset directory. ZIPs may contain an outer folder. Include exactly one client and one asset directory with `tiledata.mul`, `cliloc.enu`, and `map0.mul`. Your imported settings, client version, credentials and plugins are retained; the server address and asset path are prepared for this app.
 4. Select **Install FEX runtime**, then **Prepare required .NET**. The app detects the required version and x64/x86 architecture and downloads Microsoft's matching portable runtime with SHA-512 verification. A self-contained client uses its included runtime.
 5. Tap **Start server** at the top. Wait for **ONLINE**; first-start script compilation can take several minutes. If it fails, read `server.log` in Journal.
 6. Tap **Play Memento** with **Turnip 26 · Vulkan**, **1280×720**, **Native Surface**, **30 FPS**, WASAPI audio and client acceleration enabled. Use **Client options → Test Wine desktop** if client startup fails. The gear menu provides keyboard, Esc, mappings and return to the launcher.
 7. Log in, enter the world, move, open inventory, test targeting and audio. LT cycles the four initial layers and displays the active layer at the top. Map your TazUO macros to the chosen keys. Do not enable conflicting native controller bindings in TazUO.
-8. Log out, use **Save & stop**, restart the server and confirm the character and items persist. Create and export a world backup. Use **Journal → Export support logs** to report any issue.
+8. Log out, use **Save & close session**, restart the server and confirm the character and items persist. Use **Saves** to export world save folders, or **Journal → Back up & export complete session** for the installed runtimes, client, world and settings together. Review and test restore with a disposable session; export the automatic pre-restore snapshot. Use **Journal → Export support logs** to report any issue.
 
 This is an initial device-test preview. Android compilation, automated input/import/backup checks and CI server compilation are distinct from a successful Thor game session. The previous Box64 runtime reached the world on the Thor but remained unstable. The new FEX runtime requires a fresh device session. VirGL/OpenGL and software rendering are comparison paths. The app does not invoke installed Winlator or Termux.
 
@@ -156,6 +162,8 @@ Everything is app-private, independent of TRASC. Uninstalling deletes it, so exp
 
 Save-data archives contain only `Info`, `Saves` and `Backups`, matching the [Memento upgrade procedure](https://github.com/Jascen/ultima-memento/releases/tag/2.4.1). They exclude `Data`, game assets, compiled server files and runtime downloads. Imports preserve the installed server and `Data`, stage the replacement save folders, and back up the current save data before activating it. Failed or unsafe client imports leave the existing client intact. Updates preserve existing configuration; changes to upstream settings may need review against your retained `Info` files.
 
+Journal's complete session archives additionally include the installed Realm and FEX/Wine runtimes, Mono compiler, deployed server and staged source, `Data`, full imported client/assets, Wine prefix, .NET, controller mappings and launcher/source preferences. They exclude app export archives, logs, temporary/staging state and downloadable Git caches. Restore replaces all backed installation components, removes components absent from the selected backup, and preserves existing app export ZIPs. Before replacing an existing installed Realm, it must create a complete local snapshot; insufficient storage or a failed save/snapshot stops restoration. See the [complete session guide](docs/SETUP-AND-SESSION-0.2.22.md).
+
 ## Build
 
 .NET SDK 10, JDK 17, Gradle 8.11.1, Android SDK 35/build tools 35.0.0:
@@ -164,6 +172,8 @@ Save-data archives contain only `Info`, `Saves` and `Backups`, matching the [Mem
 python3 -m unittest discover -s tests -v
 bash scripts/check-input.sh
 bash scripts/check-client-readiness.sh
+bash scripts/check-tar-extractor.sh
+bash scripts/check-session-archive.sh
 python3 scripts/prepare-assets.py
 bash scripts/build-diagnostics.sh
 # On an ARM64 Docker build host, rebuild the two changed native endpoints:

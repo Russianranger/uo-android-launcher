@@ -1,0 +1,20 @@
+UO Memento Mobile 0.2.22 — Realm setup and complete session backup
+
+1. Save and close your current session. Install UO-Memento-Mobile-0.2.22.apk over the current app, keeping app data, saves, imported client and installed Wine/FEX runtime. Existing working runtimes do not need reinstalling. Keep Faster map loading and Smooth world loading ON, Cold-load timing OFF for normal play, optional SDL OFF on Thor, and your working graphics/audio/controller settings.
+
+2. Realm → Realm setup & updates → step 2 now selects Upstream (Jascen/ultima-memento, the default), My source (Russianranger/ultima-memento), or a Custom Git source entered as a public HTTPS repository URL. Choose its branch, tag or commit, then Pull & compile. Installing the APK does not change the currently deployed server; an explicit source update preserves existing world data and settings.
+
+3. For offline server setup, prepare the Realm runtime and Mono compiler, import the complete client, then open step 2 → Offline server setup. Import server source ZIP stages and validates a compatible Memento source ZIP. It does not compile or activate the server. Next choose Compile staged server source. Have the FEX runtime and any required .NET runtime prepared before disconnecting as well.
+
+4. Journal → Back up & export complete session saves/closes everything and creates an app copy before opening the export picker. It includes installed runtimes, prepared compiler, staged source and server build, world data/settings, complete imported client/assets, Wine prefix, .NET, controller mappings and launcher/source choices. App export ZIPs, logs, temporary files and downloadable Git caches are excluded. If you cancel export, retry using Export in Your complete session backups; do not create the large backup again. Export outside the app before uninstalling.
+
+5. Journal → Import & preview session ZIP, or a stored archive's Preview / restore, works with the runtimes closed and on a fresh setup. Review components and size. Cancel keeps your installation. Save & replace complete session validates the archive, saves/closes the current session and creates a mandatory complete local backup before replacing an existing installation. Components missing from the selected backup are removed from the current installation. A fresh setup has no installed Realm to snapshot. Export the automatic snapshot from Journal afterward.
+
+6. Leave enough extra app storage for the imported ZIP, unpacked replacement and automatic snapshot alongside your current installation. The app checks storage and reserves 128 MiB; the external export destination also needs room. After restore, use Play Memento and verify your world, client, controller mappings, server settings and launcher choices. Saves remains the separate Info/Saves/Backups-only transfer option.
+
+7. On Thor, check a fresh startup, a cold outdoor area, first interior visit and warm revisits. Test audio and controls, save/close, then confirm persistence next launch. Also check source/ref selection, offline import followed by compilation, session preview/cancel, export retry and a disposable complete-session restore. If a problem occurs, export Journal support logs before another launch. Diagnostic cold timing remains available; turn it off afterward.
+
+Both runtime archives now extract hard links as ordinary copies, retaining executable permissions and guest symbolic links. The archives themselves are unchanged. The exact client and Realm archives passed host extraction checks with simulated Android EACCES hard-link denial. A physical Android 16 setup test remains pending.
+
+Release/checksums: https://github.com/Russianranger/uo-android-launcher/releases/tag/v0.2.22
+Detailed guide: https://github.com/Russianranger/uo-android-launcher/blob/main/docs/SETUP-AND-SESSION-0.2.22.md

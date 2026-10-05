@@ -10,7 +10,9 @@ import android.provider.DocumentsContract;
 import android.webkit.*;
 import org.json.*;
 import java.io.*;
+import java.util.Properties;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.*;
 
 /** Local asset UI; no remote page can access the native bridge. */
@@ -19,11 +21,31 @@ public final class MainActivity extends Activity {
     private RuntimeManager runtime;
     private ClientRuntime client;
     private ControllerManager controller;
+    private SessionPreferences sessionPreferences;
     private final ExecutorService tasks=Executors.newFixedThreadPool(3);
     private String pickerId,pickerKind,exportPath;
     private static final int IMPORT=10,FOLDER=11,EXPORT=12;
+    // Activity recreation must not recover or remove a snapshot still being written.
+    private static final ReentrantLock SESSION_ARCHIVES=new ReentrantLock();
     @Override public void onCreate(Bundle saved){
-        super.onCreate(saved);runtime=RuntimeManager.get(this);client=ClientRuntime.get(this);
+        super.onCreate(saved);
+        sessionPreferences=new SessionPreferences(getFilesDir());
+        android.widget.TextView opening=new android.widget.TextView(this);opening.setPadding(24,24,24,24);opening.setText("Checking your saved session…");setContentView(opening);
+        android.os.Handler progress=new android.os.Handler(android.os.Looper.getMainLooper());
+        Runnable refresh=new Runnable(){public void run(){if(isDestroyed()||web!=null)return;RuntimeManager existing=RuntimeManager.existing();if(existing!=null&&existing.session.busy)opening.setText(existing.session.status);progress.postDelayed(this,500);}};
+        progress.post(refresh);
+        submit(()->{
+            Exception failure=null;
+            SESSION_ARCHIVES.lock();
+            try{SessionArchive.recover(getFilesDir(),sessionPreferences);SessionArchive.remove(new File(getFilesDir(),"session-restore-staging").toPath());cleanupIncompleteSessionBackups();}
+            catch(Exception error){failure=error;}
+            finally{SESSION_ARCHIVES.unlock();}
+            Exception error=failure;
+            runOnUiThread(()->{progress.removeCallbacks(refresh);if(isDestroyed())return;if(error!=null){opening.setText("Session recovery needs attention. Your retained installation has not been started. Close and reopen the app to retry.\n\n"+error.getMessage());return;}initializeUi();});
+        });
+    }
+    private void initializeUi(){
+        runtime=RuntimeManager.get(this);client=ClientRuntime.get(this);
         getWindow().setStatusBarColor(0xff17131e);getWindow().setNavigationBarColor(0xff17131e);
         web=new WebView(this);setContentView(web);
         controller=new ControllerManager(this,runtime.work,event->{});
@@ -127,13 +149,84 @@ public final class MainActivity extends Activity {
         if(withClient)runOnUiThread(()->{if(!isDestroyed()&&!runtime.session.closing())startActivity(new Intent(MainActivity.this,ClientActivity.class));});
         return new JSONObject().put("message",runtime.session.status);
     }
+    private void cleanupIncompleteSessionBackups()throws IOException {
+        File folder=new File(getFilesDir(),"work/exports");
+        if(!java.nio.file.Files.isDirectory(folder.toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS))return;
+        File[] files=folder.listFiles();if(files==null)throw new IOException("Cannot inspect incomplete session backups");
+        for(File file:files)if(file.getName().matches("memento-session-(before-restore-)?[0-9]+-[a-f0-9]{8}\\.zip\\.pending")&&java.nio.file.Files.isRegularFile(file.toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS))java.nio.file.Files.delete(file.toPath());
+    }
+    private JSONObject sessionPreview(File archive,String relative)throws Exception {
+        Properties info=SessionArchive.preview(archive,text->runtime.session.status=text);
+        JSONObject ui=new JSONObject(SessionArchive.archivedPreferences(archive));
+        JSONArray components=new JSONArray();for(String name:info.getProperty("components","").split(","))if(!name.trim().isEmpty())components.put(name.trim());
+        return new JSONObject().put("file",relative).put("created_at",Double.parseDouble(info.getProperty("created_at","0")))
+            .put("bytes",archive.length()).put("unpacked_bytes",Long.parseLong(info.getProperty("uncompressed_bytes","0")))
+            .put("files",Long.parseLong(info.getProperty("entries","0"))).put("components",components)
+            .put("version",info.getProperty("app_version","")).put("excluded",info.getProperty("excluded","")).put("ui",ui);
+    }
+    private JSONObject transferUi(JSONObject args)throws Exception {
+        JSONObject ui=args.optJSONObject("ui");return ui==null?new JSONObject(sessionPreferences.read()):ui;
+    }
+    private File createSessionSnapshot(JSONObject ui,boolean beforeRestore)throws Exception {
+        File archive=LocalSessionBackups.createPath(runtime.work,beforeRestore),pendingArchive=new File(archive.getPath()+".pending");
+        try{
+            SessionArchive.create(runtime.home,pendingArchive,BuildConfig.VERSION_NAME,ui.toString(),text->runtime.session.status=text);
+            java.nio.file.Files.move(pendingArchive.toPath(),archive.toPath(),java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            SessionArchive.syncDirectory(archive.toPath().getParent());
+            return archive;
+        }finally{if(pendingArchive.exists())SessionArchive.remove(pendingArchive.toPath());}
+    }
+    private JSONObject backupSession(JSONObject args)throws Exception {
+        SESSION_ARCHIVES.lock();
+        try{return backupSessionLocked(args);}finally{SESSION_ARCHIVES.unlock();}
+    }
+    private JSONObject backupSessionLocked(JSONObject args)throws Exception {
+        if(!runtime.installed())throw new IOException("Install the realm runtime before creating a complete session backup");
+        JSONObject ui=transferUi(args);
+        try{
+            ServerService.closeSession(runtime,client);
+            File archive=createSessionSnapshot(ui,false);
+            return new JSONObject().put("message","Complete session backup ready. Export it outside the app.").put("file","exports/"+archive.getName());
+        }finally{if(!client.alive()&&!runtime.alive())stopService(new Intent(MainActivity.this,ServerService.class));}
+    }
+    private JSONObject restoreSession(JSONObject args)throws Exception {
+        SESSION_ARCHIVES.lock();
+        try{return restoreSessionLocked(args);}finally{SESSION_ARCHIVES.unlock();}
+    }
+    private JSONObject restoreSessionLocked(JSONObject args)throws Exception {
+        File archive=LocalSessionBackups.archive(runtime.work,args.getString("file"));
+        // Complete validation happens before closing or touching the current session.
+        sessionPreview(archive,args.getString("file"));
+        JSONObject currentUi=transferUi(args);File staging=new File(runtime.home,"session-restore-staging"),rollback=null;
+        try{
+            ServerService.closeSession(runtime,client);
+            if(runtime.installed())rollback=createSessionSnapshot(currentUi,true);
+            SessionArchive.remove(staging.toPath());
+            SessionArchive.restore(archive,staging,text->runtime.session.status=text);
+            JSONObject restoredUi=new JSONObject(SessionArchive.restoredPreferences(staging));
+            sessionPreferences.write(currentUi.toString());
+            SessionArchive.activate(runtime.home,staging,sessionPreferences,text->runtime.session.status=text);
+            boolean cleanupPending=new File(runtime.home,SessionArchive.TRANSACTION).exists();
+            runOnUiThread(()->{if(!isDestroyed()&&controller!=null)controller.reload();});runtime.status=cleanupPending?"Session restored. Close and reopen the app to finish previous-session cleanup.":"Complete session restored. Ready to open your realm.";client.status=client.installed()?"FEX / ARM64EC runtime ready.":"Install the FEX client runtime to use the new engine.";
+            JSONObject result=new JSONObject().put("message",cleanupPending?runtime.status:"Complete session restored. Use Play to reopen it.").put("ui",restoredUi).put("ui_revision",sessionPreferences.state().optString("revision"));
+            if(rollback!=null)result.put("rollback_backup","exports/"+rollback.getName());
+            return result;
+        }finally{
+            // A failed recovery keeps its staged/original trees for the next startup.
+            if(!new File(runtime.home,SessionArchive.TRANSACTION).exists())SessionArchive.remove(staging.toPath());
+            if(!client.alive()&&!runtime.alive())stopService(new Intent(MainActivity.this,ServerService.class));
+        }
+    }
+    private void requireRecovered(String operation)throws IOException {
+        if(new File(getFilesDir(),SessionArchive.TRANSACTION).exists()&&!java.util.Arrays.asList("native_state","client_native_state","state","logs","export_logs","backups","session_backups","session_ui_preferences","export").contains(operation))throw new IOException("Session recovery is incomplete. Close and reopen the app to finish it.");
+    }
     final class Bridge {
         @JavascriptInterface public void call(String id,String operation,String input){submit(()->{
             boolean guarded=false;
-            try{JSONObject args=new JSONObject(input);Object result;
+            try{requireRecovered(operation);JSONObject args=new JSONObject(input);Object result;
                 if(java.util.Arrays.asList("session_close","session_cancel").contains(operation)){
                     runtime.session.beginShutdown();guarded=true;
-                }else if(!java.util.Arrays.asList("native_state","client_native_state","state","logs","export_logs","controller_open","client_view","pick","export","backups","backup_preview","settings_read").contains(operation)){
+                }else if(!java.util.Arrays.asList("native_state","client_native_state","state","logs","export_logs","controller_open","client_view","pick","export","backups","backup_preview","settings_read","session_backups","session_ui_preferences").contains(operation)){
                     runtime.session.begin("Working · "+operation.replace('_',' '));guarded=true;
                     runtime.session.cancellable=java.util.Arrays.asList("session_play","server_start").contains(operation);
                 }
@@ -151,10 +244,15 @@ public final class MainActivity extends Activity {
                     case "save_backup":service();runtime.start();requireIdle(realm("state",new JSONObject()));client.stop();result=realm("save_backup",args);break;
                     case "client_stop":client.stop();result=client.state();break;
                     case "client_view":if(!client.state().optBoolean("display_ready"))throw new IOException("Wait for the client display and controls to finish preparing");runOnUiThread(()->startActivity(new Intent(MainActivity.this,ClientActivity.class)));result=new JSONObject();break;
-                    case "controller_open":runOnUiThread(()->{controller.reload();new ControllerDialog(MainActivity.this,controller,()->{}).show();reply(id,new JSONObject(),null);});return;
+                    case "controller_open":if(runtime.session.busy)throw new IOException("Finish the current launch or setup task first");runOnUiThread(()->{controller.reload();new ControllerDialog(MainActivity.this,controller,()->{}).show();reply(id,new JSONObject(),null);});return;
                     case "logs":result=runtime.logs(args.optString("name","runtime.log"));break;
                     case "export_logs":result=runtime.exportLogs();break;
                     case "backups":result=LocalBackups.inventory(runtime.work);break;
+                    case "session_backups":result=LocalSessionBackups.inventory(runtime.work);break;
+                    case "session_ui_preferences":result=sessionPreferences.state();break;
+                    case "session_backup_preview":result=sessionPreview(LocalSessionBackups.archive(runtime.work,args.getString("file")),args.getString("file"));break;
+                    case "session_backup":service();result=backupSession(args);break;
+                    case "session_restore":service();result=restoreSession(args);break;
                     case "discard_import":{
                         String name=args.getString("file");if(!name.matches("[0-9a-f-]{36}\\.zip"))throw new IOException("Invalid pending import");
                         File file=TarExtractor.path(runtime.work,"incoming/"+name);if(file.isFile()&&!file.delete())throw new IOException("Could not discard the pending import");
@@ -165,7 +263,7 @@ public final class MainActivity extends Activity {
                     default:
                         service();
                         synchronized(client){
-                            if(java.util.Arrays.asList("import_client_zip","prepare_dotnet","pull_compile","restore_world").contains(operation)&&(client.alive()||client.busy))throw new IOException("Stop the client before changing its files or world");
+                            if(java.util.Arrays.asList("import_client_zip","prepare_dotnet","pull_compile","import_server_zip","compile_server","restore_world").contains(operation)&&(client.alive()||client.busy))throw new IOException("Stop the client before changing its files or world");
                             if(!"state".equals(operation))runtime.start();
                             if(java.util.Arrays.asList("save_backup","backup_world","restore_world","settings_save","settings_undo").contains(operation))requireIdle(realm("state",new JSONObject()));
                             JSONObject response=runtime.request(operation,args);if(!response.getBoolean("ok"))throw new IOException(response.optString("error"));result=response.get("result");
@@ -214,10 +312,11 @@ public final class MainActivity extends Activity {
         if(code!=RESULT_OK||data==null||data.getData()==null){reply(id,null,new IOException("File selection cancelled"));return;}
         Uri uri=data.getData();service();submit(()->{File temp=null;boolean guarded=false;
             try{
-                if(request==EXPORT){try(InputStream in=new FileInputStream(exportFile(path));OutputStream out=getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new IOException("Cannot write destination");byte[] b=new byte[1024*1024];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}LocalBackups.markExported(runtime.work,path);reply(id,new JSONObject().put("message","File exported"),null);return;}
+                if(request==EXPORT){try(InputStream in=new FileInputStream(exportFile(path));OutputStream out=getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new IOException("Cannot write destination");byte[] b=new byte[1024*1024];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}LocalBackups.markExported(runtime.work,path);LocalSessionBackups.markExported(runtime.work,path);reply(id,new JSONObject().put("message","File exported"),null);return;}
+                requireRecovered("import");
                 runtime.session.begin("Importing selected files…");guarded=true;
                 synchronized(client){
-                    if(client.alive()||client.busy)throw new IOException("Stop the client before importing");
+                    if(!kind.equals("session")&&(client.alive()||client.busy))throw new IOException("Stop the client before importing");
                     client.busy=true;
                 }
                 try{
@@ -227,15 +326,16 @@ public final class MainActivity extends Activity {
                 }finally{client.busy=false;}
                 if(kind.equals("runtime")){runtime.beginInstall();try{runtime.installArchive(temp);}finally{runtime.installing=false;}reply(id,runtime.nativeState(),null);}
                 else if(kind.equals("client-runtime")){reply(id,client.installOffline(temp),null);}
+                else if(kind.equals("session")){reply(id,sessionPreview(temp,temp.getName()),null);temp=null;}
                 else{
                     synchronized(client){
                         if(client.alive()||client.busy)throw new IOException("Stop the client before importing");
                         runtime.start();
-                        JSONObject response=runtime.request(kind.equals("world")?"preview_world":"import_client_zip",new JSONObject().put("file",temp.getName()));
+                        JSONObject response=runtime.request(kind.equals("world")?"preview_world":kind.equals("server")?"import_server_zip":"import_client_zip",new JSONObject().put("file",temp.getName()));
                         if(!response.getBoolean("ok"))throw new IOException(response.optString("error"));reply(id,response.get("result"),null);temp=null;
                     }
                 }
-            }catch(Exception e){runtime.recordFailure("import_export",e);reply(id,null,e);}finally{if(temp!=null)temp.delete();if(guarded)runtime.session.finish();}
+            }catch(Exception e){runtime.recordFailure("import_export",e);reply(id,null,e);}finally{if(temp!=null)temp.delete();if(guarded)runtime.session.finish();if(!client.alive()&&!client.busy&&!runtime.alive()&&!runtime.session.busy)stopService(new Intent(MainActivity.this,ServerService.class));}
         });
     }
     @Override public void onBackPressed(){super.onBackPressed();}

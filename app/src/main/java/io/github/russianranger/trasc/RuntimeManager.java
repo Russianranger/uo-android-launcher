@@ -16,6 +16,7 @@ final class RuntimeManager {
     static final String RELEASE="https://github.com/Russianranger/trasc-server-android/releases/download/runtime-v1/";
     private static RuntimeManager instance;
     static synchronized RuntimeManager get(Context c){if(instance==null)instance=new RuntimeManager(c.getApplicationContext());return instance;}
+    static synchronized RuntimeManager existing(){return instance;}
     final Context context;
     final File home,work,rootfs;
     volatile boolean installing;
@@ -31,7 +32,7 @@ final class RuntimeManager {
         if(installing)throw new IOException("Finish runtime installation first");
         if(!installed())throw new IOException("Install the realm runtime first");
         File backend=new File(home,"backend");backend.mkdirs();
-        for(String n:new String[]{"engine.py","uo_content.py","world_archives.py","backup_catalog.py","server_settings.py","MementoAndroidControl.cs","log_retention.py"})try(InputStream in=context.getAssets().open(n)){copy(in,new File(backend,n));}
+        for(String n:new String[]{"engine.py","uo_content.py","realm_sources.py","world_archives.py","backup_catalog.py","server_settings.py","MementoAndroidControl.cs","log_retention.py"})try(InputStream in=context.getAssets().open(n)){copy(in,new File(backend,n));}
         byte[] random=new byte[32];new SecureRandom().nextBytes(random);token=hex(random);
         write(new File(work,"run/api-token"),token);
         File tmp=new File(home,"tmp/server");tmp.mkdirs();
